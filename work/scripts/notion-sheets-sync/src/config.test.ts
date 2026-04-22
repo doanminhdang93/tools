@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { loadConfig } from "../config.ts";
+import { loadConfig } from "./config.ts";
 
 const REQUIRED_ENV = {
   NOTION_API_KEY: "secret_abc",

@@ -1,4 +1,4 @@
-import { deriveTabName } from "./src/name.ts";
+import { deriveTabName } from "./src/util/name.ts";
 
 export const assignees: string[] = [
   "Đoàn Minh Đăng",

@@ -1,7 +1,7 @@
 import { google, sheets_v4 } from "googleapis";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SHEET_COLUMN_COUNT } from "./constants.ts";
+import { SHEET_COLUMN_COUNT } from "../constants.ts";
 
 export interface SheetsClient {
   readTabValues(tabName: string): Promise<string[][]>;

@@ -1,7 +1,7 @@
-import type { SheetsClient } from "./sheets.ts";
-import type { NotionPage } from "./notion.ts";
-import { filterByAssignee } from "./notion.ts";
-import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheet-parser.ts";
+import type { SheetsClient } from "./sheets/client.ts";
+import type { NotionPage } from "./notion/client.ts";
+import { filterByAssignee } from "./notion/client.ts";
+import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheets/parser.ts";
 import {
   POINT_VALUE_VND,
   SHEET_COLUMN_COUNT,
@@ -9,15 +9,15 @@ import {
   USER_OWNED_COLUMNS,
   SYNCABLE_STATUSES,
 } from "./constants.ts";
-import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./month.ts";
-import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion-url.ts";
+import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./util/month.ts";
+import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
 import {
   titleOf,
   statusOf,
   firstTagNameOf,
   sizeCardNumberOf,
   createdTimeOf,
-} from "./notion-fields.ts";
+} from "./notion/fields.ts";
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {

@@ -123,4 +123,15 @@ Hourly system `crontab`:
 
 ## Implementation layout
 
-See [README.md](../README.md) § Project layout.
+Source lives in `src/` and is grouped by domain:
+
+- `src/index.ts` — CLI entry
+- `src/sync.ts` — orchestrator (`syncTab`)
+- `src/config.ts`, `src/logger.ts`, `src/constants.ts` — infrastructure
+- `src/notion/` — Notion integration (`client`, `fields`, `url`)
+- `src/sheets/` — Google Sheets integration (`client`, `parser`)
+- `src/util/` — reusable helpers (`month`, `name`)
+
+Tests are co-located: `foo.ts` is paired with `foo.test.ts` in the same folder. Vitest picks them up via `src/**/*.test.ts` in `vitest.config.ts`.
+
+See [README.md](../README.md) § Project layout for the full tree.

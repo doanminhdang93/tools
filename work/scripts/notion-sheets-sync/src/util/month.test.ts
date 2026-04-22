@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "../month.ts";
+import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./month.ts";
 
 describe("currentMonthLabel", () => {
   it("formats a clear mid-month date in Vietnam time as M/YYYY", () => {

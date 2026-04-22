@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTab, findSection } from "../sheet-parser.ts";
+import { parseTab, findSection } from "./parser.ts";
 
 const HEADER_ROW = [
   "Month & Stt",

@@ -1,4 +1,4 @@
-import type { NotionPage } from "./notion.ts";
+import type { NotionPage } from "./client.ts";
 
 export function titleOf(page: NotionPage): string {
   const titleProperty = page.properties["product"];

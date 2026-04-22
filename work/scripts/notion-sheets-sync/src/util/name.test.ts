@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveTabName } from "../name.ts";
+import { deriveTabName } from "./name.ts";
 
 describe("deriveTabName", () => {
   it("derives DangDM from Đoàn Minh Đăng", () => {

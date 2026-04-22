@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { columnLetterFor } from "../sheets.ts";
+import { columnLetterFor } from "./client.ts";
 
 describe("columnLetterFor", () => {
   it("maps 1..26 to A..Z", () => {

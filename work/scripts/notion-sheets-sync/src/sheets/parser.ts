@@ -1,4 +1,4 @@
-import { COLUMN_INDEX, MONTH_HEADER_PATTERN } from "./constants.ts";
+import { COLUMN_INDEX, MONTH_HEADER_PATTERN } from "../constants.ts";
 
 export interface MonthSection {
   monthLabel: string;

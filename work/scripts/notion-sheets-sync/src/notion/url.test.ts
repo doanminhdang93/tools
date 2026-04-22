@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "../notion-url.ts";
+import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./url.ts";
 
 describe("buildNotionUrl", () => {
   it("strips dashes and lowercases the id", () => {

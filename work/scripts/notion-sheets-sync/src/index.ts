@@ -1,8 +1,8 @@
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
-import { fetchAllPages } from "./notion.ts";
-import { createSheetsClient } from "./sheets.ts";
+import { fetchAllPages } from "./notion/client.ts";
+import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab } from "./sync.ts";
 import { resolveTabs, type TabEntry } from "../tabs.config.ts";

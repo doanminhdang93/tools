@@ -112,24 +112,28 @@ npm run typecheck  # TypeScript strict check
 
 ## Project layout
 
+Tests live next to the code they cover (`*.test.ts` alongside the module).
+
 ```text
 work/scripts/notion-sheets-sync/
 ├── src/
-│   ├── index.ts            # CLI entry
-│   ├── sync.ts             # Per-tab orchestration, current-month only
-│   ├── notion.ts           # DB query + assignee filter
-│   ├── notion-fields.ts    # Typed accessors (title/status/tag/size card/created time)
-│   ├── notion-url.ts       # Build + parse Notion URLs, page-id extraction
-│   ├── sheet-parser.ts     # Split tab rows into month sections
-│   ├── sheets.ts           # Sheets API (read tab / writeRange / clearRows)
-│   ├── constants.ts        # Column indices, POINT_VALUE_VND = 45000
-│   ├── month.ts            # Current-month label / ISO → label
-│   ├── name.ts             # Vietnamese-name → tab-name derivation
-│   ├── config.ts           # Env loading + zod validation
-│   ├── logger.ts           # Console + optional Slack notify
-│   └── __tests__/
-├── tabs.config.ts          # Assignees + tab-name resolution
-├── service-account.json    # Google credential (gitignored)
+│   ├── index.ts              # CLI entry (arg parse + dispatch)
+│   ├── sync.ts               # syncTab orchestrator (current-month only)
+│   ├── config.ts (+.test)    # Env loading + zod validation
+│   ├── logger.ts             # Console + optional Slack notify
+│   ├── constants.ts          # Column indices, POINT_VALUE_VND, SYNCABLE_STATUSES
+│   ├── notion/
+│   │   ├── client.ts         # DB query + assignee filter
+│   │   ├── fields.ts         # Typed accessors (title/status/tag/size-card/created)
+│   │   └── url.ts (+.test)   # Build + parse Notion URLs; page-id extraction
+│   ├── sheets/
+│   │   ├── client.ts (+.test) # Sheets API (read / writeRange / clearRows / style)
+│   │   └── parser.ts (+.test) # Split tab rows into month sections
+│   └── util/
+│       ├── month.ts (+.test)  # Vietnam-time month labels + previousMonthLabel
+│       └── name.ts (+.test)   # Vietnamese-name → tab-name derivation
+├── tabs.config.ts            # List of Notion assignees (tab names auto-derived)
+├── service-account.json      # Google credential (gitignored)
 ├── docs/
 │   └── design.md
 ├── package.json
