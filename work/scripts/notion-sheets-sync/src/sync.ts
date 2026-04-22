@@ -8,7 +8,7 @@ import {
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
 } from "./constants.ts";
-import { currentMonthLabel, monthLabelFromIsoString } from "./month.ts";
+import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./month.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion-url.ts";
 import {
   titleOf,
@@ -41,19 +41,29 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const { tabName, assigneeName, allPages, sheets, logger, now = new Date() } = args;
 
   const monthLabel = currentMonthLabel(now);
-  logger.info(`[${tabName}] syncing month ${monthLabel} for ${assigneeName}`);
-
-  const pagesForMonth = pagesAssignedInMonth(allPages, assigneeName, monthLabel);
-  pagesForMonth.sort(byCreatedTimeAscending);
-
-  logSyncedTasks(logger, tabName, pagesForMonth);
+  const earlierMonthLabel = previousMonthLabel(monthLabel);
+  logger.info(
+    `[${tabName}] syncing ${monthLabel} (candidate window: ${earlierMonthLabel} + ${monthLabel}) for ${assigneeName}`,
+  );
 
   const existingRows = await sheets.readTabValues(tabName);
   const parsed = parseTab(existingRows);
   const existingSection = findSection(parsed, monthLabel);
 
+  const pageIdsInOtherSections = collectPageIdsOutsideCurrentSection(parsed, monthLabel);
+  const candidatePages = pagesInCandidateWindow(
+    allPages,
+    assigneeName,
+    monthLabel,
+    earlierMonthLabel,
+    pageIdsInOtherSections,
+  );
+  candidatePages.sort(byCreatedTimeAscending);
+
+  logSyncedTasks(logger, tabName, candidatePages);
+
   const existingRowByPageId = indexTaskRowsByPageId(existingSection);
-  const newTaskRows = pagesForMonth.map((page) =>
+  const newTaskRows = candidatePages.map((page) =>
     buildTaskRow(page, existingRowByPageId.get(normalizeNotionPageId(page.id))),
   );
 
@@ -93,17 +103,45 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   };
 }
 
-function pagesAssignedInMonth(
+function pagesInCandidateWindow(
   allPages: NotionPage[],
   assigneeName: string,
-  monthLabel: string,
+  currentMonthLabelValue: string,
+  earlierMonthLabelValue: string,
+  pageIdsAlreadyInOtherSections: Set<string>,
 ): NotionPage[] {
   const forAssignee = filterByAssignee(allPages, assigneeName);
   return forAssignee.filter((page) => {
     const createdIso = createdTimeOf(page);
     if (!createdIso) return false;
-    return monthLabelFromIsoString(createdIso) === monthLabel;
+
+    const createdMonth = monthLabelFromIsoString(createdIso);
+    if (createdMonth !== currentMonthLabelValue && createdMonth !== earlierMonthLabelValue) {
+      return false;
+    }
+
+    const normalizedPageId = normalizeNotionPageId(page.id);
+    if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;
+
+    return true;
   });
+}
+
+function collectPageIdsOutsideCurrentSection(
+  parsed: ParsedTab,
+  currentMonth: string,
+): Set<string> {
+  const pageIds = new Set<string>();
+  for (const section of parsed.sections) {
+    if (section.monthLabel === currentMonth) continue;
+    for (const taskRow of section.taskRows) {
+      const url = taskRow[COLUMN_INDEX.link] ?? "";
+      const pageId = extractPageIdFromUrl(url);
+      if (!pageId) continue;
+      pageIds.add(pageId);
+    }
+  }
+  return pageIds;
 }
 
 function byCreatedTimeAscending(left: NotionPage, right: NotionPage): number {
@@ -162,12 +200,17 @@ async function applySectionFormat(
   }
 
   const referenceSeparatorRow = reference.headerRowIndex - 1;
-  const separatorRow = headerRowIndex - 1;
-
-  if (referenceSeparatorRow >= 1) {
-    await sheets.copyRowFormat(tabName, referenceSeparatorRow, separatorRow);
+  if (referenceSeparatorRow < 1) {
+    logger.warn(`[${tabName}] reference section has no separator row — skipping format copy`);
+    return;
   }
-  await sheets.copyRowFormat(tabName, reference.headerRowIndex, headerRowIndex);
+
+  await sheets.applySectionStyle(tabName, {
+    referenceSeparatorRow,
+    referenceHeaderRow: reference.headerRowIndex,
+    destinationSeparatorRow: headerRowIndex - 1,
+    destinationHeaderRow: headerRowIndex,
+  });
 }
 
 function findFormatReferenceSection(

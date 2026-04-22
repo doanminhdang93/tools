@@ -21,3 +21,14 @@ export function monthLabelFromIsoString(isoString: string): string {
 function formatMonthLabel(month: number, year: number): string {
   return `${month}/${year}`;
 }
+
+export function previousMonthLabel(monthLabel: string): string {
+  const match = monthLabel.match(/^(\d{1,2})\/(\d{4})$/);
+  if (!match) throw new Error(`previousMonthLabel: bad label "${monthLabel}"`);
+
+  const month = Number(match[1]);
+  const year = Number(match[2]);
+
+  if (month === 1) return formatMonthLabel(12, year - 1);
+  return formatMonthLabel(month - 1, year);
+}

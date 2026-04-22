@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { currentMonthLabel, monthLabelFromIsoString } from "../month.ts";
+import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "../month.ts";
 
 describe("currentMonthLabel", () => {
   it("formats a clear mid-month date in Vietnam time as M/YYYY", () => {
@@ -31,5 +31,20 @@ describe("monthLabelFromIsoString", () => {
 
   it("throws on invalid input", () => {
     expect(() => monthLabelFromIsoString("not-a-date")).toThrow(/invalid/);
+  });
+});
+
+describe("previousMonthLabel", () => {
+  it("returns the previous month in the same year", () => {
+    expect(previousMonthLabel("4/2026")).toBe("3/2026");
+    expect(previousMonthLabel("12/2025")).toBe("11/2025");
+  });
+
+  it("wraps from January back to December of the prior year", () => {
+    expect(previousMonthLabel("1/2026")).toBe("12/2025");
+  });
+
+  it("throws on a malformed label", () => {
+    expect(() => previousMonthLabel("April 2026")).toThrow(/bad label/);
   });
 });

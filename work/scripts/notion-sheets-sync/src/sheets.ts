@@ -7,7 +7,14 @@ export interface SheetsClient {
   readTabValues(tabName: string): Promise<string[][]>;
   writeRange(tabName: string, startRow: number, rows: string[][]): Promise<void>;
   clearRows(tabName: string, startRow: number, endRow: number): Promise<void>;
-  copyRowFormat(tabName: string, sourceRowOneBased: number, destinationRowOneBased: number): Promise<void>;
+  applySectionStyle(tabName: string, plan: SectionStylePlan): Promise<void>;
+}
+
+export interface SectionStylePlan {
+  referenceSeparatorRow: number;
+  referenceHeaderRow: number;
+  destinationSeparatorRow: number;
+  destinationHeaderRow: number;
 }
 
 const SHEETS_API_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
@@ -25,8 +32,8 @@ export function createSheetsClient(
       writeRange(sheetsApi, spreadsheetId, tabName, startRow, rows),
     clearRows: (tabName, startRow, endRow) =>
       clearRows(sheetsApi, spreadsheetId, tabName, startRow, endRow),
-    copyRowFormat: (tabName, sourceRow, destinationRow) =>
-      copyRowFormat(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, sourceRow, destinationRow),
+    applySectionStyle: (tabName, plan) =>
+      applySectionStyle(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, plan),
   };
 }
 
@@ -86,42 +93,62 @@ async function clearRows(
   });
 }
 
-async function copyRowFormat(
+async function applySectionStyle(
   sheetsApi: sheets_v4.Sheets,
   spreadsheetId: string,
   tabSheetIdCache: Map<string, number>,
   tabName: string,
-  sourceRowOneBased: number,
-  destinationRowOneBased: number,
+  plan: SectionStylePlan,
 ): Promise<void> {
   const sheetId = await lookupTabSheetId(sheetsApi, spreadsheetId, tabSheetIdCache, tabName);
 
+  const requests: sheets_v4.Schema$Request[] = [
+    copyFormatRequest(sheetId, plan.referenceSeparatorRow, plan.destinationSeparatorRow),
+    copyFormatRequest(sheetId, plan.referenceHeaderRow, plan.destinationHeaderRow),
+    clearDataValidationRequest(sheetId, plan.destinationSeparatorRow),
+    clearDataValidationRequest(sheetId, plan.destinationHeaderRow),
+  ];
+
   await sheetsApi.spreadsheets.batchUpdate({
     spreadsheetId,
-    requestBody: {
-      requests: [
-        {
-          copyPaste: {
-            source: {
-              sheetId,
-              startRowIndex: sourceRowOneBased - 1,
-              endRowIndex: sourceRowOneBased,
-              startColumnIndex: 0,
-              endColumnIndex: SHEET_COLUMN_COUNT,
-            },
-            destination: {
-              sheetId,
-              startRowIndex: destinationRowOneBased - 1,
-              endRowIndex: destinationRowOneBased,
-              startColumnIndex: 0,
-              endColumnIndex: SHEET_COLUMN_COUNT,
-            },
-            pasteType: "PASTE_FORMAT",
-          },
-        },
-      ],
-    },
+    requestBody: { requests },
   });
+}
+
+function copyFormatRequest(
+  sheetId: number,
+  sourceRowOneBased: number,
+  destinationRowOneBased: number,
+): sheets_v4.Schema$Request {
+  return {
+    copyPaste: {
+      source: fullWidthRowRange(sheetId, sourceRowOneBased),
+      destination: fullWidthRowRange(sheetId, destinationRowOneBased),
+      pasteType: "PASTE_FORMAT",
+    },
+  };
+}
+
+function clearDataValidationRequest(
+  sheetId: number,
+  rowOneBased: number,
+): sheets_v4.Schema$Request {
+  return {
+    setDataValidation: {
+      range: fullWidthRowRange(sheetId, rowOneBased),
+      // omitting `rule` clears data validation on the range
+    },
+  };
+}
+
+function fullWidthRowRange(sheetId: number, rowOneBased: number): sheets_v4.Schema$GridRange {
+  return {
+    sheetId,
+    startRowIndex: rowOneBased - 1,
+    endRowIndex: rowOneBased,
+    startColumnIndex: 0,
+    endColumnIndex: SHEET_COLUMN_COUNT,
+  };
 }
 
 async function lookupTabSheetId(
