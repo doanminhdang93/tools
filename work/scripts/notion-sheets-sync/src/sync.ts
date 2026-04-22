@@ -68,16 +68,16 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     buildTaskRow(page, existingRowByPageId.get(normalizeNotionPageId(page.id))),
   );
 
+  const writeStartRow = existingSection
+    ? existingSection.headerRowIndex
+    : parsed.totalRowCount + 2;
+
   const totalPoints = newTaskRows.reduce(
     (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
     0,
   );
   const totalMoney = totalPoints * POINT_VALUE_VND;
-  const headerRow = buildMonthHeaderRow(monthLabel, totalPoints, totalMoney);
-
-  const writeStartRow = existingSection
-    ? existingSection.headerRowIndex
-    : parsed.totalRowCount + 2;
+  const headerRow = buildMonthHeaderRow(monthLabel, writeStartRow, newTaskRows.length);
 
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...newTaskRows]);
 
@@ -180,11 +180,24 @@ function buildTaskRow(page: NotionPage, existingRow: string[] | undefined): stri
   return row;
 }
 
-function buildMonthHeaderRow(monthLabel: string, totalPoints: number, totalMoney: number): string[] {
+function buildMonthHeaderRow(
+  monthLabel: string,
+  headerRowIndex: number,
+  taskRowCount: number,
+): string[] {
   const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
   row[COLUMN_INDEX.month] = monthLabel;
-  row[COLUMN_INDEX.point] = String(totalPoints);
-  row[COLUMN_INDEX.money] = String(totalMoney);
+
+  if (taskRowCount === 0) {
+    row[COLUMN_INDEX.point] = "0";
+    row[COLUMN_INDEX.money] = "0";
+    return row;
+  }
+
+  const firstTaskRow = headerRowIndex + 1;
+  const lastTaskRow = headerRowIndex + taskRowCount;
+  row[COLUMN_INDEX.point] = `=SUM(H${firstTaskRow}:H${lastTaskRow})`;
+  row[COLUMN_INDEX.money] = `=H${headerRowIndex}*${POINT_VALUE_VND}`;
   return row;
 }
 
