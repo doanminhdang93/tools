@@ -35,3 +35,14 @@ export const USER_OWNED_COLUMNS = [
 ] as const;
 
 export const MONTH_HEADER_PATTERN = /^(\d{1,2})\/(\d{4})$/;
+
+export const SYNCABLE_STATUSES = new Set<string>([
+  "Done",
+  "Testing Pro",
+  "Testing",
+  "Waiting To Test",
+  "Doing",
+  "Wait to review",
+  "Reviewing",
+  "Live",
+]);
