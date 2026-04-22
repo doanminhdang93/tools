@@ -1,7 +1,7 @@
 import type { SheetsClient } from "./sheets.ts";
 import type { NotionPage } from "./notion.ts";
 import { filterByAssignee } from "./notion.ts";
-import { parseTab, findSection, type MonthSection } from "./sheet-parser.ts";
+import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheet-parser.ts";
 import {
   POINT_VALUE_VND,
   SHEET_COLUMN_COUNT,
@@ -46,6 +46,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const pagesForMonth = pagesAssignedInMonth(allPages, assigneeName, monthLabel);
   pagesForMonth.sort(byCreatedTimeAscending);
 
+  logSyncedTasks(logger, tabName, pagesForMonth);
+
   const existingRows = await sheets.readTabValues(tabName);
   const parsed = parseTab(existingRows);
   const existingSection = findSection(parsed, monthLabel);
@@ -69,15 +71,16 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...newTaskRows]);
 
   if (existingSection) {
-    const oldLastRow = existingSection.lastRowIndex;
     const newLastRow = writeStartRow + newTaskRows.length;
-    if (newLastRow < oldLastRow) {
-      await sheets.clearRows(tabName, newLastRow + 1, oldLastRow);
+    if (newLastRow < existingSection.lastRowIndex) {
+      await sheets.clearRows(tabName, newLastRow + 1, existingSection.lastRowIndex);
     }
   }
 
+  await applySectionFormat(sheets, tabName, parsed, monthLabel, writeStartRow, logger);
+
   logger.info(
-    `[${tabName}] done — ${monthLabel} tasks=${newTaskRows.length} points=${totalPoints} money=${totalMoney}`,
+    `[${tabName}] done — ${monthLabel} tasks=${newTaskRows.length} points=${totalPoints} money=${totalMoney.toLocaleString("en-US")}`,
   );
 
   return {
@@ -142,4 +145,51 @@ function buildMonthHeaderRow(monthLabel: string, totalPoints: number, totalMoney
   row[COLUMN_INDEX.point] = String(totalPoints);
   row[COLUMN_INDEX.money] = String(totalMoney);
   return row;
+}
+
+async function applySectionFormat(
+  sheets: SheetsClient,
+  tabName: string,
+  parsed: ParsedTab,
+  currentMonth: string,
+  headerRowIndex: number,
+  logger: Logger,
+): Promise<void> {
+  const reference = findFormatReferenceSection(parsed, currentMonth);
+  if (!reference) {
+    logger.warn(`[${tabName}] no reference section found — skipping format copy`);
+    return;
+  }
+
+  const referenceSeparatorRow = reference.headerRowIndex - 1;
+  const separatorRow = headerRowIndex - 1;
+
+  if (referenceSeparatorRow >= 1) {
+    await sheets.copyRowFormat(tabName, referenceSeparatorRow, separatorRow);
+  }
+  await sheets.copyRowFormat(tabName, reference.headerRowIndex, headerRowIndex);
+}
+
+function findFormatReferenceSection(
+  parsed: ParsedTab,
+  currentMonth: string,
+): MonthSection | undefined {
+  const candidates = parsed.sections.filter((section) => section.monthLabel !== currentMonth);
+  return candidates[candidates.length - 1];
+}
+
+function logSyncedTasks(logger: Logger, tabName: string, pages: NotionPage[]): void {
+  if (pages.length === 0) {
+    logger.info(`[${tabName}] no pages matched`);
+    return;
+  }
+
+  for (const page of pages) {
+    const shortId = page.id.slice(0, 8);
+    const createdIso = createdTimeOf(page);
+    const point = sizeCardNumberOf(page);
+    logger.info(
+      `[${tabName}]   ${shortId} • ${point} pts • ${createdIso.slice(0, 10)} • ${titleOf(page)}`,
+    );
+  }
 }

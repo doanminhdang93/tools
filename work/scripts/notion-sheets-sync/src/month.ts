@@ -1,5 +1,12 @@
+const VIETNAM_OFFSET_MILLISECONDS = 7 * 60 * 60 * 1000;
+
+function toVietnamTime(date: Date): Date {
+  return new Date(date.getTime() + VIETNAM_OFFSET_MILLISECONDS);
+}
+
 export function currentMonthLabel(now: Date = new Date()): string {
-  return formatMonthLabel(now.getUTCMonth() + 1, now.getUTCFullYear());
+  const vietnamNow = toVietnamTime(now);
+  return formatMonthLabel(vietnamNow.getUTCMonth() + 1, vietnamNow.getUTCFullYear());
 }
 
 export function monthLabelFromIsoString(isoString: string): string {
@@ -7,7 +14,8 @@ export function monthLabelFromIsoString(isoString: string): string {
   if (Number.isNaN(date.getTime())) {
     throw new Error(`monthLabelFromIsoString: invalid ISO string "${isoString}"`);
   }
-  return formatMonthLabel(date.getUTCMonth() + 1, date.getUTCFullYear());
+  const vietnamDate = toVietnamTime(date);
+  return formatMonthLabel(vietnamDate.getUTCMonth() + 1, vietnamDate.getUTCFullYear());
 }
 
 function formatMonthLabel(month: number, year: number): string {

@@ -1,11 +1,13 @@
 import { google, sheets_v4 } from "googleapis";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { SHEET_COLUMN_COUNT } from "./constants.ts";
 
 export interface SheetsClient {
   readTabValues(tabName: string): Promise<string[][]>;
   writeRange(tabName: string, startRow: number, rows: string[][]): Promise<void>;
   clearRows(tabName: string, startRow: number, endRow: number): Promise<void>;
+  copyRowFormat(tabName: string, sourceRowOneBased: number, destinationRowOneBased: number): Promise<void>;
 }
 
 const SHEETS_API_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
@@ -15,12 +17,16 @@ export function createSheetsClient(
   spreadsheetId: string,
 ): SheetsClient {
   const sheetsApi = buildSheetsApi(serviceAccountKeyFile);
+  const tabSheetIdCache = new Map<string, number>();
+
   return {
     readTabValues: (tabName) => readTabValues(sheetsApi, spreadsheetId, tabName),
     writeRange: (tabName, startRow, rows) =>
       writeRange(sheetsApi, spreadsheetId, tabName, startRow, rows),
     clearRows: (tabName, startRow, endRow) =>
       clearRows(sheetsApi, spreadsheetId, tabName, startRow, endRow),
+    copyRowFormat: (tabName, sourceRow, destinationRow) =>
+      copyRowFormat(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, sourceRow, destinationRow),
   };
 }
 
@@ -78,6 +84,67 @@ async function clearRows(
     spreadsheetId,
     range: `${tabName}!A${startRow}:Z${endRow}`,
   });
+}
+
+async function copyRowFormat(
+  sheetsApi: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabSheetIdCache: Map<string, number>,
+  tabName: string,
+  sourceRowOneBased: number,
+  destinationRowOneBased: number,
+): Promise<void> {
+  const sheetId = await lookupTabSheetId(sheetsApi, spreadsheetId, tabSheetIdCache, tabName);
+
+  await sheetsApi.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          copyPaste: {
+            source: {
+              sheetId,
+              startRowIndex: sourceRowOneBased - 1,
+              endRowIndex: sourceRowOneBased,
+              startColumnIndex: 0,
+              endColumnIndex: SHEET_COLUMN_COUNT,
+            },
+            destination: {
+              sheetId,
+              startRowIndex: destinationRowOneBased - 1,
+              endRowIndex: destinationRowOneBased,
+              startColumnIndex: 0,
+              endColumnIndex: SHEET_COLUMN_COUNT,
+            },
+            pasteType: "PASTE_FORMAT",
+          },
+        },
+      ],
+    },
+  });
+}
+
+async function lookupTabSheetId(
+  sheetsApi: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabSheetIdCache: Map<string, number>,
+  tabName: string,
+): Promise<number> {
+  const cached = tabSheetIdCache.get(tabName);
+  if (cached !== undefined) return cached;
+
+  const response = await sheetsApi.spreadsheets.get({ spreadsheetId });
+  const matchingSheet = response.data.sheets?.find(
+    (sheet) => sheet.properties?.title === tabName,
+  );
+
+  const sheetId = matchingSheet?.properties?.sheetId;
+  if (sheetId === undefined || sheetId === null) {
+    throw new Error(`Tab not found in spreadsheet: "${tabName}"`);
+  }
+
+  tabSheetIdCache.set(tabName, sheetId);
+  return sheetId;
 }
 
 // 1 → "A", 26 → "Z", 27 → "AA", 702 → "ZZ", 703 → "AAA"
