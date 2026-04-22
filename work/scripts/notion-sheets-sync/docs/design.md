@@ -1,176 +1,126 @@
-# Notion → Google Sheets Sync Tool — Design
+# Notion → Google Sheets Sync — Design
 
 **Date:** 2026-04-22
-**Status:** Approved; ready for implementation
+**Status:** Implemented (v2 — section-based layout)
 **Location:** `work/scripts/notion-sheets-sync/`
 
 ## Goal
 
-Sync tasks from a Notion database to an existing Google Sheet, one-way (Notion → Sheets). Runs both manually and via cron (every 1 hour). Upsert by Notion page ID so manual formatting/charts in Sheets are preserved.
-
-**Per-tab model:** the target Sheet has multiple tabs, one per Assignee. Each tab receives only tasks where the `Assignee` property matches that tab's owner. The CLI accepts a tab name as argument to sync a specific tab. This is a core requirement — the sync is always scoped to a single Assignee → single tab.
+Fill, per run, the **current-month section** of a per-Assignee tab in a shared Google Sheet from the `avadagroup` Notion "Tasks" database. Previous months are immutable. User-managed columns (Staging test, Type, Note) are preserved across syncs.
 
 ## Source
 
 - **Workspace:** `avadagroup`
-- **Database ID:** `090d542c49d84c1d83370ace1cf52b56` (title: "Tasks", 17 properties total)
+- **Database ID:** `090d542c49d84c1d83370ace1cf52b56` (title: "Tasks")
+- Properties read by the tool:
+  - `product` (title) — task title
+  - `Status` (status) — status value
+  - `Tag` (multi_select, first value) — "App" code (PPU, BS, FG, …)
+  - `Size Card` (select, numeric name) — story points
+  - `Assignee` (people) — filter
+  - `Created time` (created_time) — month grouping
 
-### Properties to sync (8 of 17)
-
-| Order | Property | Notion type | Sheet column |
-| ----- | -------- | ----------- | ------------ |
-| 1 | `Task ID` | unique_id | Task ID |
-| 2 | `product` | title | Task |
-| 3 | `Status` | status | Status |
-| 4 | `Assignee` | people | Assignee |
-| 5 | `Follower` | people | Follower |
-| 6 | `Size Card` | select | Size Card |
-| 7 | `Sprint` | relation | Sprint |
-| 8 | `Created time` | created_time | Created time |
-
-Dropped: `Release date`, `Time`, `Priority`, `Tag`, `Story Point`, `Description`, `Figma File`, `point`, `point 1`.
-
-A hidden column `_notion_id` (Notion page ID) sits at position A for upsert matching. Visible headers start at column B.
+Note: `Story Point` property exists but is barely populated (1 value across 419 sample pages). We use `Size Card` for points per explicit user confirmation.
 
 ## Destination
 
 - **Sheet:** `https://docs.google.com/spreadsheets/d/1RUAGMUsD9HmepUr4Tgpuw5FwaSpcaE16SbWj-IaxH-w/edit`
-- **Sheet ID:** `1RUAGMUsD9HmepUr4Tgpuw5FwaSpcaE16SbWj-IaxH-w`
-- **Tabs:** one per Assignee. First tab to support: `DangDM`.
-- **Auth:** Google Service Account (JSON key file, shared with target Sheet as Editor)
+- **Tabs:** one per Assignee, pre-created by the user. First supported tab: `DangDM`.
+- **Auth:** Google Service Account JSON (gitignored), Sheet shared with SA email as Editor.
 
-## CLI surface
+## Layout
 
-```bash
-# Sync a specific tab (Assignee)
-npm run sync -- DangDM
-npm run sync -- --tab DangDM
-
-# Sync all configured tabs in one run (for cron)
-npm run sync -- --all
-```
-
-The `--all` flag loops through every entry in `tabs.config.ts`. Cron uses `--all`. Manual runs typically target one tab.
-
-## Tab configuration
-
-File `tabs.config.ts` holds the list of Notion assignee full-names. Tab names are auto-derived (no manual mapping).
-
-```ts
-export const assignees: string[] = [
-  "Đoàn Minh Đăng",
-  // "Nguyễn Trọng Hiếu",  // add as teammates are onboarded
-];
-```
-
-### Tab-name derivation
-
-Rule (given Vietnamese name `Family Middle Given`):
-
-1. Take the **given name** (last word) → remove Vietnamese diacritics (including `Đ`→`D`) → capitalize first letter → `Given`
-2. Take the **initials** of all preceding words (family + middle) → remove diacritics → uppercase → `Initials`
-3. Tab name = `Given + Initials`
-
-Examples:
-
-- `Đoàn Minh Đăng` → given=`Đăng`→`Dang`, initials=`ĐM`→`DM` → **`DangDM`**
-- `Nguyễn Trọng Hiếu` → given=`Hiếu`→`Hieu`, initials=`NT` → **`HieuNT`**
-
-Collisions (same derived name for two people) are expected to be rare; user will manually suffix `1`, `2` in the Sheet tab name and add the suffix to the override map:
-
-```ts
-// optional
-export const overrides: Record<string, string> = {
-  // "Notion Full Name": "DerivedNamePlusSuffix",
-};
-```
-
-Filter logic: fetch all pages from Notion DB once per run; for each assignee, keep pages whose `Assignee` property includes a person with that exact `name` (full-name match, case-sensitive, diacritics preserved).
-
-## Architecture
+Each tab has a fixed 10-column header at row 1:
 
 ```text
-work/scripts/notion-sheets-sync/
-├── src/
-│   ├── index.ts         # CLI entry — parse args, dispatch
-│   ├── sync.ts          # Orchestrate for one tab: filter → diff → write
-│   ├── notion.ts        # Paginated fetch of Notion DB
-│   ├── sheets.ts        # Read/write Google Sheets, service account auth
-│   ├── transform.ts     # Notion property → flat cell value per type
-│   ├── config.ts        # Env loading + zod validation
-│   └── logger.ts        # Console + optional Slack error notify
-├── tabs.config.ts       # Tab → Assignee mapping
-├── columns.config.ts    # Column order + header names
-├── service-account.json # Gitignored
-├── package.json
-├── tsconfig.json
-├── README.md
-└── .env.sample
+A = Month & Stt  B = Task title  C = link  D = App  E = Staging test
+F = Type  G = Status  H = Point  I = Money  J = Note
 ```
 
-### Dependencies
+Content below row 1 is a sequence of month sections, each shaped as:
 
-- `@notionhq/client` — official Notion SDK
-- `googleapis` — Google Sheets API
-- `dotenv` — load root `.token.env`
-- `zod` — validate env/config
-- `tsx` — run TypeScript directly (dev/prod)
+```text
+<blank row>                                    (separator before 2nd+ section)
+<month header row>   A="M/YYYY", H=total pts, I=total money, others empty
+<task rows>          A="", B=title, C=notion URL, D=first Tag,
+                     E/F/J user-owned, G=status, H=size card, I=""
+```
 
-## Data flow (per tab)
+## Ownership of columns
 
-1. **Load config** — read `.token.env` from repo root, validate with zod
-2. **Fetch Notion** — paginate DB `query` endpoint until exhausted (done once, shared across tabs in `--all` mode)
-3. **Filter by Assignee** — keep pages where `Assignee` contains a person with `name === tab.notionAssigneeName`
-4. **Transform** — each page → row per `columns.config.ts`. Column A = Notion page ID.
-5. **Read Sheet tab** — get column A + headers → `Map<notionId, rowIndex>`
-6. **Diff & write**:
-   - `updates` (ID exists) → batch update ranges
-   - `appends` (ID new) → append at end of tab
-   - (v1) Rows in Sheet but no longer in Notion → left alone
-7. **Report** — log counts (fetched / filtered / updated / appended) per tab
+| Column | Source | On task rows | On section headers |
+| ------ | ------ | ------------ | ------------------ |
+| A | — / month | empty | `M/YYYY` |
+| B | `product` | written | empty |
+| C | notion URL | written | empty |
+| D | `Tag[0]` | written | empty |
+| E | user-managed | **preserved** | empty |
+| F | user-managed | **preserved** | empty |
+| G | `Status` | written | empty |
+| H | `Size Card` | written | sum of task points |
+| I | derived | empty | `H × 45,000` |
+| J | user-managed | **preserved** | empty |
 
-## Upsert strategy rationale
+`POINT_VALUE_VND = 45000` is a fixed constant.
 
-Full overwrite was rejected — user wants to preserve conditional formatting, charts, and any manual annotations in the Sheet. Upsert by Notion page ID keeps row positions stable so references don't break.
+## Upsert strategy
+
+- Each task row carries the Notion page's URL in column C (`https://www.notion.so/<32-hex-id>`).
+- During sync, the tool extracts the 32-char id from every existing row's URL in the current section and builds `Map<pageId, existingRow>`.
+- For each Notion task in the current month:
+  - If `existingRow` exists → copy E, F, J from the existing row into the new row and update B, C, D, G, H.
+  - Otherwise → append with empty E, F, J.
+- Rows are written back in ascending `Created time` order.
+
+## Section management
+
+- **Current month label** = `UTC.getMonth()+1 + "/" + UTC.getFullYear()`.
+- If a section with that label already exists, the tool writes over the header row + task rows, then clears any trailing rows from the old section that are no longer needed.
+- If no matching section exists, the tool appends at the end of the tab after one blank separator row.
+
+Only the current-month section is ever written; all earlier sections stay untouched.
+
+## CLI
+
+```bash
+npm run sync -- DangDM        # positional → one tab
+npm run sync -- --tab DangDM  # explicit flag → one tab
+npm run sync -- --all         # iterate every tab in tabs.config.ts
+```
+
+Exit codes: `0` ok, `1` runtime failure (any tab), `2` usage error.
+
+## Tabs config
+
+File `tabs.config.ts` holds a list of Notion assignee full names. Tab names are auto-derived:
+
+- `Đoàn Minh Đăng` → `DangDM`
+- `Nguyễn Trọng Hiếu` → `HieuNT`
+
+Collisions can be handled via a manual `overrides` map (not needed today).
 
 ## Cron
 
-- System `crontab` for hourly `--all` runs
-- Entry: `0 * * * * cd <abs-path> && npm run sync -- --all >> sync.log 2>&1`
-- No long-running Node process (no `node-cron`)
-- README documents both crontab and launchd (macOS) setup
+Hourly system `crontab`:
 
-## Env vars (added to root `.token.env`)
-
-```bash
-# Already present
-NOTION_API_KEY=<set>
-SLACK_BOT_TOKEN=<set>
-
-# To add
-NOTION_DATABASE_ID=090d542c49d84c1d83370ace1cf52b56
-GOOGLE_SHEETS_ID=1RUAGMUsD9HmepUr4Tgpuw5FwaSpcaE16SbWj-IaxH-w
-GOOGLE_SERVICE_ACCOUNT_KEY_FILE=./service-account.json
-NOTIFY_ON_ERROR_CHANNEL=            # empty = no Slack
+```cron
+0 * * * * cd <abs path> && /usr/local/bin/npm run sync -- --all >> sync.log 2>&1
 ```
 
 ## Error handling
 
-- Top-level try/catch in `index.ts` → log stack, exit 1
-- Per-page transform errors: log + skip, continue
-- Per-tab errors in `--all` mode: log + continue with next tab, exit 1 at end if any tab failed
-- If `NOTIFY_ON_ERROR_CHANNEL` set + any failure → Slack summary before exit
+- Top-level catch in `index.ts` → stack-trace log, exit 1.
+- Per-tab failures in `--all` mode are collected; remaining tabs still attempt.
+- `notifyFailure` posts a Slack message if and only if both `SLACK_BOT_TOKEN` and `NOTIFY_ON_ERROR_CHANNEL` are set.
 
-## Out of scope (v1)
+## Out of scope
 
-- Two-way sync
-- Deletion propagation (Notion → Sheets)
-- Historical snapshots / audit log
-- Multiple source databases
-- Webhook-based real-time sync
-- Auto-creating tabs — tabs must exist in Sheet before running
+- Two-way sync (Sheets → Notion).
+- Backfilling historical sections.
+- Auto-creation of tabs (tabs must pre-exist).
+- Deletion propagation (tasks removed from Notion remain in Sheet rows below the current month).
+- Computing a "Stt" number per task within Column A.
 
-## Remaining setup (user action, post-scaffold)
+## Implementation layout
 
-1. Google Service Account setup — user creates in GCP, downloads JSON → `service-account.json`, shares target Sheet with SA email as Editor (documented in README)
-2. Add envs to root `.token.env` (template appended automatically by scaffold step)
+See [README.md](../README.md) § Project layout.

@@ -2,22 +2,13 @@ import { google, sheets_v4 } from "googleapis";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-export interface RowUpdate {
-  rowIndex: number;
-  values: string[];
-}
-
 export interface SheetsClient {
-  readExistingRows(tabName: string): Promise<Map<string, number>>;
-  ensureHeaders(tabName: string, visibleHeaders: string[]): Promise<void>;
-  batchUpdateRows(tabName: string, updates: RowUpdate[]): Promise<void>;
-  appendRows(tabName: string, rows: string[][]): Promise<void>;
+  readTabValues(tabName: string): Promise<string[][]>;
+  writeRange(tabName: string, startRow: number, rows: string[][]): Promise<void>;
+  clearRows(tabName: string, startRow: number, endRow: number): Promise<void>;
 }
 
 const SHEETS_API_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-const HIDDEN_ID_HEADER = "_notion_id";
-const HEADER_ROW_COUNT = 1;
-const FIRST_DATA_ROW = HEADER_ROW_COUNT + 1;
 
 export function createSheetsClient(
   serviceAccountKeyFile: string,
@@ -25,18 +16,17 @@ export function createSheetsClient(
 ): SheetsClient {
   const sheetsApi = buildSheetsApi(serviceAccountKeyFile);
   return {
-    readExistingRows: (tabName) => readExistingRows(sheetsApi, spreadsheetId, tabName),
-    ensureHeaders: (tabName, visibleHeaders) =>
-      ensureHeaders(sheetsApi, spreadsheetId, tabName, visibleHeaders),
-    batchUpdateRows: (tabName, updates) =>
-      batchUpdateRows(sheetsApi, spreadsheetId, tabName, updates),
-    appendRows: (tabName, rows) => appendRows(sheetsApi, spreadsheetId, tabName, rows),
+    readTabValues: (tabName) => readTabValues(sheetsApi, spreadsheetId, tabName),
+    writeRange: (tabName, startRow, rows) =>
+      writeRange(sheetsApi, spreadsheetId, tabName, startRow, rows),
+    clearRows: (tabName, startRow, endRow) =>
+      clearRows(sheetsApi, spreadsheetId, tabName, startRow, endRow),
   };
 }
 
 function buildSheetsApi(serviceAccountKeyFile: string): sheets_v4.Sheets {
-  const absoluteKeyPath = resolve(serviceAccountKeyFile);
-  const credentials = JSON.parse(readFileSync(absoluteKeyPath, "utf8"));
+  const absolutePath = resolve(serviceAccountKeyFile);
+  const credentials = JSON.parse(readFileSync(absolutePath, "utf8"));
   const googleAuth = new google.auth.GoogleAuth({
     credentials,
     scopes: [SHEETS_API_SCOPE],
@@ -44,79 +34,49 @@ function buildSheetsApi(serviceAccountKeyFile: string): sheets_v4.Sheets {
   return google.sheets({ version: "v4", auth: googleAuth });
 }
 
-async function readExistingRows(
+async function readTabValues(
   sheetsApi: sheets_v4.Sheets,
   spreadsheetId: string,
   tabName: string,
-): Promise<Map<string, number>> {
+): Promise<string[][]> {
   const response = await sheetsApi.spreadsheets.values.get({
     spreadsheetId,
-    range: `${tabName}!A:A`,
+    range: `${tabName}!A:Z`,
   });
-
-  const rowIdIndex = new Map<string, number>();
-  const columnValues = response.data.values ?? [];
-
-  for (let rowOffset = HEADER_ROW_COUNT; rowOffset < columnValues.length; rowOffset++) {
-    const notionPageId = columnValues[rowOffset]?.[0];
-    if (typeof notionPageId !== "string" || notionPageId.length === 0) continue;
-    rowIdIndex.set(notionPageId, rowOffset + 1);
-  }
-
-  return rowIdIndex;
+  const values = response.data.values ?? [];
+  return values.map((row) => row.map((cell) => (cell ?? "").toString()));
 }
 
-async function ensureHeaders(
+async function writeRange(
   sheetsApi: sheets_v4.Sheets,
   spreadsheetId: string,
   tabName: string,
-  visibleHeaders: string[],
-): Promise<void> {
-  const fullHeaderRow = [HIDDEN_ID_HEADER, ...visibleHeaders];
-  const lastColumnLetter = columnLetterFor(fullHeaderRow.length);
-  await sheetsApi.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${tabName}!A1:${lastColumnLetter}1`,
-    valueInputOption: "RAW",
-    requestBody: { values: [fullHeaderRow] },
-  });
-}
-
-async function batchUpdateRows(
-  sheetsApi: sheets_v4.Sheets,
-  spreadsheetId: string,
-  tabName: string,
-  updates: RowUpdate[],
-): Promise<void> {
-  if (updates.length === 0) return;
-
-  const batchPayload = updates.map((update) => {
-    const lastColumnLetter = columnLetterFor(update.values.length);
-    return {
-      range: `${tabName}!A${update.rowIndex}:${lastColumnLetter}${update.rowIndex}`,
-      values: [update.values],
-    };
-  });
-
-  await sheetsApi.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    requestBody: { valueInputOption: "RAW", data: batchPayload },
-  });
-}
-
-async function appendRows(
-  sheetsApi: sheets_v4.Sheets,
-  spreadsheetId: string,
-  tabName: string,
+  startRow: number,
   rows: string[][],
 ): Promise<void> {
   if (rows.length === 0) return;
-  await sheetsApi.spreadsheets.values.append({
+  const columnCount = rows[0]?.length ?? 0;
+  const lastColumnLetter = columnLetterFor(columnCount);
+  const endRow = startRow + rows.length - 1;
+  await sheetsApi.spreadsheets.values.update({
     spreadsheetId,
-    range: `${tabName}!A${FIRST_DATA_ROW}`,
-    valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
+    range: `${tabName}!A${startRow}:${lastColumnLetter}${endRow}`,
+    valueInputOption: "USER_ENTERED",
     requestBody: { values: rows },
+  });
+}
+
+async function clearRows(
+  sheetsApi: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+  startRow: number,
+  endRow: number,
+): Promise<void> {
+  if (endRow < startRow) return;
+  await sheetsApi.spreadsheets.values.clear({
+    spreadsheetId,
+    range: `${tabName}!A${startRow}:Z${endRow}`,
   });
 }
 

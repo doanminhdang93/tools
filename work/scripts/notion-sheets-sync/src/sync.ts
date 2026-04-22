@@ -1,88 +1,145 @@
-import type { SheetsClient, RowUpdate } from "./sheets.ts";
+import type { SheetsClient } from "./sheets.ts";
 import type { NotionPage } from "./notion.ts";
 import { filterByAssignee } from "./notion.ts";
-import { propertyToCell } from "./transform.ts";
-import type { ColumnConfig } from "../columns.config.ts";
+import { parseTab, findSection, type MonthSection } from "./sheet-parser.ts";
+import {
+  POINT_VALUE_VND,
+  SHEET_COLUMN_COUNT,
+  COLUMN_INDEX,
+  USER_OWNED_COLUMNS,
+} from "./constants.ts";
+import { currentMonthLabel, monthLabelFromIsoString } from "./month.ts";
+import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion-url.ts";
+import {
+  titleOf,
+  statusOf,
+  firstTagNameOf,
+  sizeCardNumberOf,
+  createdTimeOf,
+} from "./notion-fields.ts";
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {
   tabName: string;
   assigneeName: string;
   allPages: NotionPage[];
-  columns: ColumnConfig[];
   sheets: SheetsClient;
   logger: Logger;
+  now?: Date;
 }
 
 export interface SyncTabResult {
   tabName: string;
-  filtered: number;
-  updated: number;
-  appended: number;
-  skipped: number;
+  monthLabel: string;
+  totalPoints: number;
+  totalMoney: number;
+  taskCount: number;
+  sectionCreated: boolean;
 }
 
-const MISSING_PROPERTY: NotionPage["properties"][string] = { type: "_missing" };
+export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
+  const { tabName, assigneeName, allPages, sheets, logger, now = new Date() } = args;
 
-export async function syncTab(arguments_: SyncTabArgs): Promise<SyncTabResult> {
-  const { tabName, assigneeName, allPages, columns, sheets, logger } = arguments_;
+  const monthLabel = currentMonthLabel(now);
+  logger.info(`[${tabName}] syncing month ${monthLabel} for ${assigneeName}`);
 
-  const visibleHeaders = columns.map((column) => column.sheetHeader);
-  await sheets.ensureHeaders(tabName, visibleHeaders);
+  const pagesForMonth = pagesAssignedInMonth(allPages, assigneeName, monthLabel);
+  pagesForMonth.sort(byCreatedTimeAscending);
 
-  const assigneePages = filterByAssignee(allPages, assigneeName);
-  logger.info(`[${tabName}] filtered ${assigneePages.length} pages for ${assigneeName}`);
+  const existingRows = await sheets.readTabValues(tabName);
+  const parsed = parseTab(existingRows);
+  const existingSection = findSection(parsed, monthLabel);
 
-  const existingRowByPageId = await sheets.readExistingRows(tabName);
+  const existingRowByPageId = indexTaskRowsByPageId(existingSection);
+  const newTaskRows = pagesForMonth.map((page) =>
+    buildTaskRow(page, existingRowByPageId.get(normalizeNotionPageId(page.id))),
+  );
 
-  const rowsToUpdate: RowUpdate[] = [];
-  const rowsToAppend: string[][] = [];
-  let skippedCount = 0;
+  const totalPoints = newTaskRows.reduce(
+    (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
+    0,
+  );
+  const totalMoney = totalPoints * POINT_VALUE_VND;
+  const headerRow = buildMonthHeaderRow(monthLabel, totalPoints, totalMoney);
 
-  for (const page of assigneePages) {
-    const rowValues = tryBuildRow(page, columns, logger, tabName);
-    if (!rowValues) {
-      skippedCount++;
-      continue;
+  const writeStartRow = existingSection
+    ? existingSection.headerRowIndex
+    : parsed.totalRowCount + 2;
+
+  await sheets.writeRange(tabName, writeStartRow, [headerRow, ...newTaskRows]);
+
+  if (existingSection) {
+    const oldLastRow = existingSection.lastRowIndex;
+    const newLastRow = writeStartRow + newTaskRows.length;
+    if (newLastRow < oldLastRow) {
+      await sheets.clearRows(tabName, newLastRow + 1, oldLastRow);
     }
-
-    const existingRowIndex = existingRowByPageId.get(page.id);
-    if (existingRowIndex) {
-      rowsToUpdate.push({ rowIndex: existingRowIndex, values: rowValues });
-      continue;
-    }
-    rowsToAppend.push(rowValues);
   }
 
-  await sheets.batchUpdateRows(tabName, rowsToUpdate);
-  await sheets.appendRows(tabName, rowsToAppend);
-
   logger.info(
-    `[${tabName}] done — updated=${rowsToUpdate.length} appended=${rowsToAppend.length} skipped=${skippedCount}`,
+    `[${tabName}] done — ${monthLabel} tasks=${newTaskRows.length} points=${totalPoints} money=${totalMoney}`,
   );
 
   return {
     tabName,
-    filtered: assigneePages.length,
-    updated: rowsToUpdate.length,
-    appended: rowsToAppend.length,
-    skipped: skippedCount,
+    monthLabel,
+    totalPoints,
+    totalMoney,
+    taskCount: newTaskRows.length,
+    sectionCreated: !existingSection,
   };
 }
 
-function tryBuildRow(
-  page: NotionPage,
-  columns: ColumnConfig[],
-  logger: Logger,
-  tabName: string,
-): string[] | null {
-  try {
-    const cells = columns.map((column) =>
-      propertyToCell(page.properties[column.notionProperty] ?? MISSING_PROPERTY),
-    );
-    return [page.id, ...cells];
-  } catch (cause) {
-    logger.warn(`[${tabName}] transform failed for page ${page.id}`, cause);
-    return null;
+function pagesAssignedInMonth(
+  allPages: NotionPage[],
+  assigneeName: string,
+  monthLabel: string,
+): NotionPage[] {
+  const forAssignee = filterByAssignee(allPages, assigneeName);
+  return forAssignee.filter((page) => {
+    const createdIso = createdTimeOf(page);
+    if (!createdIso) return false;
+    return monthLabelFromIsoString(createdIso) === monthLabel;
+  });
+}
+
+function byCreatedTimeAscending(left: NotionPage, right: NotionPage): number {
+  return createdTimeOf(left).localeCompare(createdTimeOf(right));
+}
+
+function indexTaskRowsByPageId(section: MonthSection | undefined): Map<string, string[]> {
+  const indexed = new Map<string, string[]>();
+  if (!section) return indexed;
+
+  for (const taskRow of section.taskRows) {
+    const url = taskRow[COLUMN_INDEX.link] ?? "";
+    const pageId = extractPageIdFromUrl(url);
+    if (!pageId) continue;
+    indexed.set(pageId, taskRow);
   }
+  return indexed;
+}
+
+function buildTaskRow(page: NotionPage, existingRow: string[] | undefined): string[] {
+  const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
+  row[COLUMN_INDEX.month] = "";
+  row[COLUMN_INDEX.title] = titleOf(page);
+  row[COLUMN_INDEX.link] = buildNotionUrl(page.id);
+  row[COLUMN_INDEX.app] = firstTagNameOf(page);
+  row[COLUMN_INDEX.status] = statusOf(page);
+  row[COLUMN_INDEX.point] = String(sizeCardNumberOf(page));
+  row[COLUMN_INDEX.money] = "";
+
+  for (const preservedIndex of USER_OWNED_COLUMNS) {
+    row[preservedIndex] = existingRow?.[preservedIndex] ?? "";
+  }
+  return row;
+}
+
+function buildMonthHeaderRow(monthLabel: string, totalPoints: number, totalMoney: number): string[] {
+  const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
+  row[COLUMN_INDEX.month] = monthLabel;
+  row[COLUMN_INDEX.point] = String(totalPoints);
+  row[COLUMN_INDEX.money] = String(totalMoney);
+  return row;
 }

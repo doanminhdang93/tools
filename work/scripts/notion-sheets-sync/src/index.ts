@@ -5,7 +5,6 @@ import { fetchAllPages } from "./notion.ts";
 import { createSheetsClient } from "./sheets.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab } from "./sync.ts";
-import { columns } from "../columns.config.ts";
 import { resolveTabs, type TabEntry } from "../tabs.config.ts";
 
 const ROOT_TOKEN_ENV_PATH = resolve(import.meta.dirname, "../../../../.token.env");
@@ -83,7 +82,6 @@ async function main(): Promise<void> {
         tabName: target.tabName,
         assigneeName: target.notionAssigneeName,
         allPages,
-        columns,
         sheets,
         logger,
       });
