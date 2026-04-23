@@ -36,12 +36,20 @@ export const USER_OWNED_COLUMNS = [
 
 export const MONTH_HEADER_PATTERN = /^(\d{1,2})\/(\d{4})$/;
 
-export const SYNCABLE_STATUSES = new Set<string>([
+export const SYNCABLE_STATUSES = [
   "Done",
   "Testing Pro",
   "Testing",
   "Waiting To Test",
-  "Wait to review",
+  "Wait to Review",
   "Reviewing",
   "Live",
-]);
+] as const;
+
+const SYNCABLE_STATUSES_LOWERCASED = new Set<string>(
+  SYNCABLE_STATUSES.map((status) => status.toLowerCase()),
+);
+
+export function isSyncableStatus(status: string): boolean {
+  return SYNCABLE_STATUSES_LOWERCASED.has(status.trim().toLowerCase());
+}

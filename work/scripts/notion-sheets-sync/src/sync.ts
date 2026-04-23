@@ -7,7 +7,7 @@ import {
   SHEET_COLUMN_COUNT,
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
-  SYNCABLE_STATUSES,
+  isSyncableStatus,
 } from "./constants.ts";
 import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./util/month.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
@@ -113,7 +113,7 @@ function pagesInCandidateWindow(
 ): NotionPage[] {
   const forAssignee = filterByAssignee(allPages, assigneeName);
   return forAssignee.filter((page) => {
-    if (!SYNCABLE_STATUSES.has(statusOf(page))) return false;
+    if (!isSyncableStatus(statusOf(page))) return false;
 
     const createdIso = createdTimeOf(page);
     if (!createdIso) return false;
