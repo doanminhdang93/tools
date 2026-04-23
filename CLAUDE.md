@@ -38,5 +38,5 @@ Use the `new-tool` skill at `.claude/skills/new-tool/SKILL.md`. The flow:
 
 - Don't restructure the folders without asking — the 2-level (purpose → type) layout is intentional.
 - Don't set up pnpm/npm workspaces — sharing is deliberately simple via `shared/`.
-- Don't add LICENSE headers to files — this workspace is private (UNLICENSED).
+- Don't add per-file license headers — the root `LICENSE` (MIT) covers the whole repo.
 - Don't create docs unless asked — except the README.md inside each tool folder.

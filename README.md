@@ -41,3 +41,7 @@ Put keys in `.token.env` (gitignored, never committed). See [.token.env.example]
 ## Default stack
 
 JavaScript / TypeScript (Node.js + React). Other languages are fine per-tool when they fit better.
+
+## License
+
+[MIT](LICENSE) © 2026 Dang Doan
