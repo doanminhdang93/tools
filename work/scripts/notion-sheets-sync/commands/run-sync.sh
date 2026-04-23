@@ -9,6 +9,6 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
 cd "$(dirname "$0")/.."
-# --cron resolves to $SYNC_CRON_TAB from .token.env (single-user install),
-# or falls back to --all when the env var is unset (central runner install).
+# --cron reads $SYNC_CRON_TAB from .token.env:
+#   "all" (or unset) → sync every tab; "<member>" → sync only that member's tab.
 npm run sync -- --cron

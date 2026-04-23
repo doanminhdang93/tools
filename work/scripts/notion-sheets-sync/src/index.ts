@@ -55,16 +55,18 @@ function parseCliArguments(argv: string[]): ParsedArguments {
   return parsed;
 }
 
-// `--cron` resolves to the tab named in SYNC_CRON_TAB env (single-user install),
-// or falls back to --all when the env var is absent (central runner install).
+// `--cron` resolves SYNC_CRON_TAB: "all" (any case) → sync all tabs;
+// a specific member name → sync only that tab; unset → sync all (central runner install).
 function applyCronDefault(parsed: ParsedArguments, syncCronTab: string | undefined): void {
   if (!parsed.cronMode) return;
   if (parsed.syncAll || parsed.tabName) return;
-  if (syncCronTab) {
-    parsed.tabName = syncCronTab;
-  } else {
+
+  const trimmed = syncCronTab?.trim();
+  if (!trimmed || trimmed.toLowerCase() === "all") {
     parsed.syncAll = true;
+    return;
   }
+  parsed.tabName = trimmed;
 }
 
 function pickTabsForRun(

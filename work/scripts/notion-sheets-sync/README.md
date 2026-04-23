@@ -15,7 +15,7 @@ Manual setup (once per machine — details in the [Setup](#setup) section below)
 
 1. Drop `service-account.json` into this folder (Setup § 2) and share the target Sheet with the SA email as Editor
 2. Make sure the Notion integration has access to the Tasks DB (Setup § 3)
-3. Fill the workspace-root `.token.env` (Setup § 4) — and set **`SYNC_CRON_TAB=<your tab>`** so your hourly cron only touches your own tab (leave empty if you want the cron to sync every tab)
+3. Fill the workspace-root `.token.env` (Setup § 4) — and set **`SYNC_CRON_TAB=<your tab>`** so your hourly cron only touches your own tab (use `all` if you want the cron to sync every tab)
 
 Then run:
 
@@ -82,7 +82,7 @@ GOOGLE_SHEETS_ID=1RUAGMUsD9HmepUr4Tgpuw5FwaSpcaE16SbWj-IaxH-w
 GOOGLE_SERVICE_ACCOUNT_KEY_FILE=<absolute path to service-account.json>
 SLACK_BOT_TOKEN=<existing>       # optional
 NOTIFY_ON_ERROR_CHANNEL=         # optional — set a channel to enable alerts
-SYNC_CRON_TAB=DangDM             # optional — cron syncs only this tab; unset → cron syncs --all
+SYNC_CRON_TAB=DangDM             # cron syncs only this tab; set to "all" (or unset) → cron syncs every tab
 ```
 
 ### 5. Assignees → tabs
@@ -130,7 +130,7 @@ cd /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync
 | --- | --- | --- |
 | `<tab>` (positional) or `--tab <tab>` | Which tab to sync | required unless `--all` / `--cron` |
 | `--all` | Sync every resolved tab | off |
-| `--cron` | Sync the tab named in `SYNC_CRON_TAB`; falls back to `--all` if unset | off — used by the cron wrapper |
+| `--cron` | Read `SYNC_CRON_TAB`: `all` (or unset) → sync every tab; any other value → sync only that tab | off — used by the cron wrapper |
 | `--month M/YYYY` | Sync this specific month instead of the system "now" | current month in Vietnam time |
 
 ### Common scenarios
@@ -142,7 +142,7 @@ npm run sync -- DangDM
 # 2) Sync current month for every configured tab
 npm run sync -- --all
 
-# 2b) What hourly cron runs — honours SYNC_CRON_TAB, falls back to --all
+# 2b) What hourly cron runs — SYNC_CRON_TAB="all" (or unset) syncs everyone, else that tab
 npm run sync -- --cron
 
 # 3) Backfill a specific past month for one tab
@@ -190,8 +190,8 @@ A wrapper script `commands/run-sync.sh` is shipped alongside the tool. It source
 
 The `--cron` flag picks its target from `.token.env`:
 
-- `SYNC_CRON_TAB=<tab>` set → cron syncs just that tab every hour (per-user install)
-- `SYNC_CRON_TAB` empty / unset → cron syncs `--all` every hour (central runner)
+- `SYNC_CRON_TAB=<tab>` → cron syncs just that tab every hour (per-user install)
+- `SYNC_CRON_TAB=all` (or empty / unset) → cron syncs every tab every hour (central runner)
 
 So each teammate who clones the repo edits their own `.token.env` once; no code changes.
 
