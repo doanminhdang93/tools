@@ -6,7 +6,9 @@ Syncs tasks from the `avadagroup` Notion "Tasks" database into a Google Sheet, w
 
 ## What gets synced
 
-For each configured Assignee, the tool finds (or creates) the month section whose label matches the target month (the current month by default, or whatever `--month` specifies), and fills its task rows from Notion. Task rows hold these columns:
+For each tab (one per person), the tool finds (or creates) the month section whose label matches the target month (the current month by default, or whatever `--month` specifies), and fills its task rows from Notion. A task shows up in a person's tab if they are listed as **Assignee** OR **Follower** on that Notion page.
+
+Task rows hold these columns:
 
 | Col | Header | Source (Notion) | Writable by sync? |
 | --- | --- | --- | --- |
@@ -16,12 +18,14 @@ For each configured Assignee, the tool finds (or creates) the month section whos
 | D | App | `Tag` (first value) | yes |
 | E | Staging test | — | **preserved** (user-managed) |
 | F | Type | — | **preserved** (user-managed) |
-| G | Status | `Status` | yes |
+| G | Status | `Status` (mapped to Sheet dropdown form) | yes |
 | H | Point | `Size Card` (select, numeric name) | yes |
 | I | Money | — (Point × 45,000 VND on section header only) | yes — section header only |
 | J | Note | — | **preserved** (user-managed) |
+| K | Assignees | `Assignee` (people, comma-separated) | yes |
+| L | Followers | `Follower` (people, comma-separated) | yes |
 
-The section header row is recomputed every run: `Point` = sum of all task points in the section, `Money` = `Point × 45,000`.
+The section header row is recomputed every run via formulas: `Point = SUM(H<firstTask>:H<lastTask>)`, `Money = Point × 45000`. Row 1 headers are also written by the tool on every run (idempotent), so spreading the tool to a new tab requires no manual header setup.
 
 Upsert matches by the 32-character Notion page id embedded in the `link` URL of column C — rows keep their position; user-owned columns (E, F, J) are kept verbatim.
 
@@ -60,23 +64,36 @@ SLACK_BOT_TOKEN=<existing>       # optional
 NOTIFY_ON_ERROR_CHANNEL=         # optional — set a channel to enable alerts
 ```
 
-### 5. Configure assignees → tabs
+### 5. Assignees → tabs
 
-Edit [tabs.config.ts](tabs.config.ts):
+By default the tool is **fully dynamic**: it scans every Notion task, unions the unique names found in `Assignee` + `Follower`, derives a tab name for each via `deriveTabName(<name>)`, and keeps the ones whose derived name actually matches an existing tab in the target Sheet.
 
-```ts
-export const assignees: string[] = [
-  "Đoàn Minh Đăng",
-  // Add more as teammates are onboarded
-];
-```
+Add a teammate in Notion + create a tab with the matching derived name in the Sheet → the next run picks them up automatically. No code change.
 
-Tab names are auto-derived from Vietnamese names:
+Tab-name derivation (Vietnamese):
 
 - `Đoàn Minh Đăng` → `DangDM`
 - `Nguyễn Trọng Hiếu` → `HieuNT`
 
-**Each tab must already exist in the Sheet** with that exact name before running sync.
+If you ever need to restrict the sync to a specific subset (e.g. while debugging), list the exact Notion display names in [tabs.config.ts](tabs.config.ts):
+
+```ts
+export const assignees: string[] = [
+  "Đoàn Minh Đăng",
+];
+```
+
+A non-empty `assignees` array switches off dynamic discovery — only the names listed are synced.
+
+Use `overrides` (same file) if the derivation rule produces the wrong tab name for someone:
+
+```ts
+export const overrides: Record<string, string> = {
+  "Some Notion Name": "CustomTabName",
+};
+```
+
+**Each tab must already exist in the Sheet** with that exact name before running sync. The tool does not create tabs.
 
 ## Usage
 

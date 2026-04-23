@@ -8,6 +8,7 @@ export interface SheetsClient {
   writeRange(tabName: string, startRow: number, rows: string[][]): Promise<void>;
   clearRows(tabName: string, startRow: number, endRow: number): Promise<void>;
   applySectionStyle(tabName: string, plan: SectionStylePlan): Promise<void>;
+  listTabNames(): Promise<string[]>;
 }
 
 export interface SectionStylePlan {
@@ -34,7 +35,18 @@ export function createSheetsClient(
       clearRows(sheetsApi, spreadsheetId, tabName, startRow, endRow),
     applySectionStyle: (tabName, plan) =>
       applySectionStyle(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, plan),
+    listTabNames: () => listTabNames(sheetsApi, spreadsheetId),
   };
+}
+
+async function listTabNames(
+  sheetsApi: sheets_v4.Sheets,
+  spreadsheetId: string,
+): Promise<string[]> {
+  const response = await sheetsApi.spreadsheets.get({ spreadsheetId });
+  return (response.data.sheets ?? [])
+    .map((sheet) => sheet.properties?.title ?? "")
+    .filter((title) => title.length > 0);
 }
 
 function buildSheetsApi(serviceAccountKeyFile: string): sheets_v4.Sheets {

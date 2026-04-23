@@ -35,3 +35,22 @@ export function createdTimeOf(page: NotionPage): string {
   if (!createdProperty || createdProperty.type !== "created_time") return "";
   return (createdProperty as { created_time?: string }).created_time ?? "";
 }
+
+export function assigneeNamesOf(page: NotionPage): string[] {
+  return peopleNamesFromProperty(page.properties["Assignee"]);
+}
+
+export function followerNamesOf(page: NotionPage): string[] {
+  return peopleNamesFromProperty(page.properties["Follower"]);
+}
+
+function peopleNamesFromProperty(
+  property: NotionPage["properties"][string] | undefined,
+): string[] {
+  if (!property || property.type !== "people") return [];
+  const people = (property as { people?: { name?: string | null }[] }).people;
+  if (!Array.isArray(people)) return [];
+  return people
+    .map((person) => person.name ?? "")
+    .filter((name) => name.length > 0);
+}

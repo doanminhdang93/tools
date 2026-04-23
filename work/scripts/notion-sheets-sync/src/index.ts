@@ -6,7 +6,8 @@ import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab } from "./sync.ts";
 import { monthLabelToDate } from "./util/month.ts";
-import { resolveTabs, type TabEntry } from "../tabs.config.ts";
+import { resolveTargetTabs, type TabEntry } from "./resolve-tabs.ts";
+import { assignees, overrides } from "../tabs.config.ts";
 
 const ROOT_TOKEN_ENV_PATH = resolve(import.meta.dirname, "../../../../.token.env");
 loadDotenv({ path: ROOT_TOKEN_ENV_PATH });
@@ -48,12 +49,12 @@ function parseCliArguments(argv: string[]): ParsedArguments {
   return parsed;
 }
 
-function resolveTargetTabs(
+function pickTabsForRun(
   parsed: ParsedArguments,
-  configuredTabs: TabEntry[],
+  allPossibleTabs: TabEntry[],
   logger: Logger,
 ): TabEntry[] | null {
-  if (parsed.syncAll) return configuredTabs;
+  if (parsed.syncAll) return allPossibleTabs;
 
   if (!parsed.tabName) {
     logger.error(
@@ -62,11 +63,11 @@ function resolveTargetTabs(
     return null;
   }
 
-  const match = configuredTabs.find((entry) => entry.tabName === parsed.tabName);
+  const match = allPossibleTabs.find((entry) => entry.tabName === parsed.tabName);
   if (match) return [match];
 
-  const availableTabs = configuredTabs.map((entry) => entry.tabName).join(", ");
-  logger.error(`Tab "${parsed.tabName}" not in tabs.config.ts. Available: ${availableTabs}`);
+  const availableTabs = allPossibleTabs.map((entry) => entry.tabName).join(", ");
+  logger.error(`Tab "${parsed.tabName}" not resolvable. Available: ${availableTabs}`);
   return null;
 }
 
@@ -94,10 +95,6 @@ async function main(): Promise<void> {
   });
 
   const parsed = parseCliArguments(process.argv);
-  const configuredTabs = resolveTabs();
-
-  const targetTabs = resolveTargetTabs(parsed, configuredTabs, logger);
-  if (!targetTabs) process.exit(2);
 
   const referenceDate = resolveReferenceDate(parsed, logger);
   if (!referenceDate) process.exit(2);
@@ -114,6 +111,28 @@ async function main(): Promise<void> {
     appConfig.googleServiceAccountKeyFile,
     appConfig.googleSheetsId,
   );
+
+  const allPossibleTabs = await resolveTargetTabs({
+    explicitAssignees: assignees,
+    overrides,
+    allPages,
+    sheets,
+  });
+
+  if (allPossibleTabs.length === 0) {
+    logger.error(
+      "No tabs resolved. Either set tabs.config.ts `assignees`, or ensure the sheet has tabs whose names match `deriveTabName(<Notion person>)`.",
+    );
+    process.exit(2);
+  }
+
+  const mode = assignees.length > 0 ? "explicit" : "auto-discovered";
+  logger.info(
+    `Resolved ${allPossibleTabs.length} tab(s) [${mode}]: ${allPossibleTabs.map((t) => t.tabName).join(", ")}`,
+  );
+
+  const targetTabs = pickTabsForRun(parsed, allPossibleTabs, logger);
+  if (!targetTabs) process.exit(2);
 
   const failures: string[] = [];
   for (const target of targetTabs) {

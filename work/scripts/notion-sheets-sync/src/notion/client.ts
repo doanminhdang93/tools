@@ -6,6 +6,7 @@ export interface NotionPage {
 }
 
 const NOTION_PAGE_SIZE = 100;
+const PEOPLE_FIELDS_FOR_INVOLVEMENT = ["Assignee", "Follower"] as const;
 
 export async function fetchAllPages(
   notionApiKey: string,
@@ -36,19 +37,40 @@ export async function fetchAllPages(
   return collected;
 }
 
-export function filterByAssignee(
+export function filterByInvolvedPerson(
   pages: NotionPage[],
-  assigneeName: string,
+  personName: string,
 ): NotionPage[] {
-  return pages.filter((page) => pageHasAssignee(page, assigneeName));
+  return pages.filter((page) => isInvolvedInPage(page, personName));
 }
 
-function pageHasAssignee(page: NotionPage, assigneeName: string): boolean {
-  const assigneeProperty = page.properties["Assignee"];
-  if (!assigneeProperty || assigneeProperty.type !== "people") return false;
+export function collectInvolvedPeopleNames(pages: NotionPage[]): Set<string> {
+  const names = new Set<string>();
+  for (const page of pages) {
+    for (const field of PEOPLE_FIELDS_FOR_INVOLVEMENT) {
+      for (const name of peopleNamesFromField(page, field)) {
+        names.add(name);
+      }
+    }
+  }
+  return names;
+}
 
-  const people = (assigneeProperty as { people?: { name?: string | null }[] }).people;
-  if (!Array.isArray(people)) return false;
+function isInvolvedInPage(page: NotionPage, personName: string): boolean {
+  for (const field of PEOPLE_FIELDS_FOR_INVOLVEMENT) {
+    if (peopleNamesFromField(page, field).includes(personName)) return true;
+  }
+  return false;
+}
 
-  return people.some((person) => person.name === assigneeName);
+function peopleNamesFromField(page: NotionPage, fieldName: string): string[] {
+  const property = page.properties[fieldName];
+  if (!property || property.type !== "people") return [];
+
+  const people = (property as { people?: { name?: string | null }[] }).people;
+  if (!Array.isArray(people)) return [];
+
+  return people
+    .map((person) => person.name ?? "")
+    .filter((name) => name.length > 0);
 }

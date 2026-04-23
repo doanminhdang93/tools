@@ -11,6 +11,8 @@ export const SHEET_COLUMN_HEADERS = [
   "Point",
   "Money",
   "Note",
+  "Assignees",
+  "Followers",
 ] as const;
 
 export const SHEET_COLUMN_COUNT = SHEET_COLUMN_HEADERS.length;
@@ -26,6 +28,8 @@ export const COLUMN_INDEX = {
   point: 7,
   money: 8,
   note: 9,
+  assignees: 10,
+  followers: 11,
 } as const;
 
 export const USER_OWNED_COLUMNS = [

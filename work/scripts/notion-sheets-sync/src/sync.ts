@@ -1,10 +1,11 @@
 import type { SheetsClient } from "./sheets/client.ts";
 import type { NotionPage } from "./notion/client.ts";
-import { filterByAssignee } from "./notion/client.ts";
+import { filterByInvolvedPerson } from "./notion/client.ts";
 import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheets/parser.ts";
 import {
   POINT_VALUE_VND,
   SHEET_COLUMN_COUNT,
+  SHEET_COLUMN_HEADERS,
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
   isSyncableStatus,
@@ -18,6 +19,8 @@ import {
   firstTagNameOf,
   sizeCardNumberOf,
   createdTimeOf,
+  assigneeNamesOf,
+  followerNamesOf,
 } from "./notion/fields.ts";
 import type { Logger } from "./logger.ts";
 
@@ -47,6 +50,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   logger.info(
     `[${tabName}] syncing ${monthLabel} (candidate window: ${earlierMonthLabel} + ${monthLabel}) for ${assigneeName}`,
   );
+
+  await sheets.writeRange(tabName, 1, [[...SHEET_COLUMN_HEADERS]]);
 
   const existingRows = await sheets.readTabValues(tabName);
   const parsed = parseTab(existingRows);
@@ -112,8 +117,8 @@ function pagesInCandidateWindow(
   earlierMonthLabelValue: string,
   pageIdsAlreadyInOtherSections: Set<string>,
 ): NotionPage[] {
-  const forAssignee = filterByAssignee(allPages, assigneeName);
-  return forAssignee.filter((page) => {
+  const involvedPages = filterByInvolvedPerson(allPages, assigneeName);
+  return involvedPages.filter((page) => {
     if (!isSyncableStatus(statusOf(page))) return false;
 
     const createdIso = createdTimeOf(page);
@@ -174,6 +179,8 @@ function buildTaskRow(page: NotionPage, existingRow: string[] | undefined): stri
   row[COLUMN_INDEX.status] = toSheetStatus(statusOf(page));
   row[COLUMN_INDEX.point] = String(sizeCardNumberOf(page));
   row[COLUMN_INDEX.money] = "";
+  row[COLUMN_INDEX.assignees] = assigneeNamesOf(page).join(", ");
+  row[COLUMN_INDEX.followers] = followerNamesOf(page).join(", ");
 
   for (const preservedIndex of USER_OWNED_COLUMNS) {
     row[preservedIndex] = existingRow?.[preservedIndex] ?? "";
