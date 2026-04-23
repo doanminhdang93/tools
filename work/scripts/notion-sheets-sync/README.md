@@ -95,13 +95,31 @@ Exit codes: `0` success · `1` runtime failure · `2` usage error.
 
 ## Cron (hourly)
 
-Edit crontab: `crontab -e`
+A wrapper script `run-sync.sh` is shipped alongside the tool. It sources nvm, changes into the tool directory, and runs `npm run sync -- --all`. Using the wrapper keeps cron working even when you switch Node versions with `nvm use`.
 
-```cron
-0 * * * * cd /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync && /usr/local/bin/npm run sync -- --all >> sync.log 2>&1
+Install the hourly cron entry:
+
+```bash
+( crontab -l 2>/dev/null; echo '0 * * * * /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync/run-sync.sh >> /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync/sync.log 2>&1' ) | crontab -
 ```
 
-Replace `/usr/local/bin/npm` with your `which npm` path. On Apple-Silicon with Homebrew it is usually `/opt/homebrew/bin/npm`.
+Verify:
+
+```bash
+crontab -l
+```
+
+Logs stream to `sync.log` in the tool folder (gitignored). Tail it after the next top-of-hour firing to confirm:
+
+```bash
+tail -f /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync/sync.log
+```
+
+To uninstall:
+
+```bash
+crontab -l | grep -v run-sync.sh | crontab -
+```
 
 ## Tests
 
