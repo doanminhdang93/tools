@@ -1,12 +1,12 @@
 # notion-sheets-sync
 
-Syncs tasks from the `avadagroup` Notion "Tasks" database into a Google Sheet, with **one tab per Assignee** and **one month-section per tab**. Only the **current month** is touched on each run — previous months are preserved.
+Syncs tasks from the `avadagroup` Notion "Tasks" database into a Google Sheet, with **one tab per Assignee** and **one month-section per tab**. By default only the **current month** is touched; pass `--month M/YYYY` to backfill a specific month.
 
 - Design: [docs/design.md](docs/design.md)
 
 ## What gets synced
 
-For each configured Assignee, the tool finds (or creates) the month section whose label matches the current month (e.g. `4/2026`), and fills its task rows from Notion. Task rows hold these columns:
+For each configured Assignee, the tool finds (or creates) the month section whose label matches the target month (the current month by default, or whatever `--month` specifies), and fills its task rows from Notion. Task rows hold these columns:
 
 | Col | Header | Source (Notion) | Writable by sync? |
 | --- | --- | --- | --- |
@@ -78,28 +78,69 @@ Tab names are auto-derived from Vietnamese names:
 
 **Each tab must already exist in the Sheet** with that exact name before running sync.
 
-## Run
+## Usage
+
+Run everything from inside the tool folder:
 
 ```bash
-# Sync the current-month section of a single tab (positional)
-npm run sync -- DangDM
-
-# Equivalent, explicit flag
-npm run sync -- --tab DangDM
-
-# Sync every configured tab (used by cron)
-npm run sync -- --all
-
-# Backfill or re-sync a specific month instead of the current one
-npm run sync -- DangDM --month 3/2026
-npm run sync -- --all --month 12/2025
+cd /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync
 ```
 
-`--month M/YYYY` overrides the "current month" that the tool normally picks from the system clock. The same rules apply: the candidate window is that month plus the previous month, tasks already noted in earlier sections are skipped, and user-owned columns (Staging test / Type / Note) in the target section are preserved for matching rows.
+### Flags
 
-> **Caution:** Running `--month <past>` will overwrite the existing section for that month — user-owned columns are preserved per row, but task ordering and totals are rewritten. Prefer running without `--month` for normal day-to-day use.
+| Flag / position | Meaning | Default |
+| --- | --- | --- |
+| `<tab>` (positional) or `--tab <tab>` | Which tab to sync | required unless `--all` |
+| `--all` | Sync every tab in `tabs.config.ts` | off |
+| `--month M/YYYY` | Sync this specific month instead of the system "now" | current month in Vietnam time |
 
-Exit codes: `0` success · `1` runtime failure · `2` usage error.
+### Common scenarios
+
+```bash
+# 1) Sync current month for one person (most common)
+npm run sync -- DangDM
+
+# 2) Sync current month for every configured tab (what cron runs every hour)
+npm run sync -- --all
+
+# 3) Backfill a specific past month for one tab
+npm run sync -- DangDM --month 3/2026
+
+# 4) Backfill a specific past month for everyone
+npm run sync -- --all --month 12/2025
+
+# 5) Explicit --tab flag form (equivalent to scenario 1)
+npm run sync -- --tab DangDM
+```
+
+### How `--month` behaves
+
+`--month M/YYYY` replaces the system-derived "current month". Everything downstream is identical to the default path:
+
+- Candidate window = target month + previous month (in Vietnam time)
+- Tasks already noted in other month sections of the sheet are skipped
+- Matching rows keep their user-owned columns (Staging test / Type / Note) verbatim
+
+> **Caution:** running `--month <past>` rewrites the target section — task ordering and totals are regenerated. Use it deliberately, not as part of routine cron.
+
+### Invalid input
+
+Bad `--month` input fails fast before any network call:
+
+```bash
+$ npm run sync -- DangDM --month abc
+[...] ERROR --month must be M/YYYY (e.g. 3/2026), got: "abc"
+$ echo $?
+2
+```
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success |
+| `1` | Runtime failure (Notion/Sheets error, at least one tab failed) |
+| `2` | Usage error (bad flag, unknown tab, malformed `--month`) |
 
 ## Cron (hourly)
 
@@ -132,7 +173,7 @@ crontab -l | grep -v run-sync.sh | crontab -
 ## Tests
 
 ```bash
-npm test           # run vitest suite (32 tests)
+npm test           # run vitest suite
 npm run typecheck  # TypeScript strict check
 ```
 
@@ -143,21 +184,21 @@ Tests live next to the code they cover (`*.test.ts` alongside the module).
 ```text
 work/scripts/notion-sheets-sync/
 ├── src/
-│   ├── index.ts              # CLI entry (arg parse + dispatch)
-│   ├── sync.ts               # syncTab orchestrator (current-month only)
-│   ├── config.ts (+.test)    # Env loading + zod validation
-│   ├── logger.ts             # Console + optional Slack notify
-│   ├── constants.ts          # Column indices, POINT_VALUE_VND, SYNCABLE_STATUSES
+│   ├── index.ts                # CLI entry (arg parse + --month handling + dispatch)
+│   ├── sync.ts                 # syncTab orchestrator (one tab → one month-section)
+│   ├── config.ts (+.test)      # Env loading + zod validation
+│   ├── logger.ts               # Console + optional Slack notify
+│   ├── constants.ts (+.test)   # Columns, POINT_VALUE_VND, Notion→Sheet status map
 │   ├── notion/
-│   │   ├── client.ts         # DB query + assignee filter
-│   │   ├── fields.ts         # Typed accessors (title/status/tag/size-card/created)
-│   │   └── url.ts (+.test)   # Build + parse Notion URLs; page-id extraction
+│   │   ├── client.ts           # DB query + assignee filter
+│   │   ├── fields.ts           # Typed accessors (title/status/tag/size-card/created)
+│   │   └── url.ts (+.test)     # Build + parse Notion URLs; page-id extraction
 │   ├── sheets/
-│   │   ├── client.ts (+.test) # Sheets API (read / writeRange / clearRows / style)
-│   │   └── parser.ts (+.test) # Split tab rows into month sections
+│   │   ├── client.ts (+.test)  # Sheets API (read / writeRange / clearRows / style)
+│   │   └── parser.ts (+.test)  # Split tab rows into month sections
 │   └── util/
-│       ├── month.ts (+.test)  # Vietnam-time month labels + previousMonthLabel
-│       └── name.ts (+.test)   # Vietnamese-name → tab-name derivation
+│       ├── month.ts (+.test)   # VN-time month labels, previousMonthLabel, monthLabelToDate
+│       └── name.ts (+.test)    # Vietnamese-name → tab-name derivation
 ├── tabs.config.ts            # List of Notion assignees (tab names auto-derived)
 ├── service-account.json      # Google credential (gitignored)
 ├── docs/
