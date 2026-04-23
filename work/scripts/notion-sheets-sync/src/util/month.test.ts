@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./month.ts";
+import {
+  currentMonthLabel,
+  monthLabelFromIsoString,
+  monthLabelToDate,
+  previousMonthLabel,
+} from "./month.ts";
 
 describe("currentMonthLabel", () => {
   it("formats a clear mid-month date in Vietnam time as M/YYYY", () => {
@@ -46,5 +51,30 @@ describe("previousMonthLabel", () => {
 
   it("throws on a malformed label", () => {
     expect(() => previousMonthLabel("April 2026")).toThrow(/bad label/);
+  });
+});
+
+describe("monthLabelToDate", () => {
+  it("round-trips through currentMonthLabel for a variety of months", () => {
+    const labels = ["1/2026", "3/2026", "4/2026", "12/2025", "7/2024"];
+    for (const label of labels) {
+      expect(currentMonthLabel(monthLabelToDate(label))).toBe(label);
+    }
+  });
+
+  it("lands safely inside the target month when converted to Vietnam time", () => {
+    const date = monthLabelToDate("3/2026");
+    const vietnamDate = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+    expect(vietnamDate.getUTCFullYear()).toBe(2026);
+    expect(vietnamDate.getUTCMonth()).toBe(2);
+  });
+
+  it("throws on a malformed label", () => {
+    expect(() => monthLabelToDate("March 2026")).toThrow(/bad label/);
+  });
+
+  it("throws when the month is out of 1..12", () => {
+    expect(() => monthLabelToDate("0/2026")).toThrow(/out of range/);
+    expect(() => monthLabelToDate("13/2026")).toThrow(/out of range/);
   });
 });

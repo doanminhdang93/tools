@@ -83,10 +83,14 @@ Only the current-month section is ever written; all earlier sections stay untouc
 ## CLI
 
 ```bash
-npm run sync -- DangDM        # positional → one tab
-npm run sync -- --tab DangDM  # explicit flag → one tab
-npm run sync -- --all         # iterate every tab in tabs.config.ts
+npm run sync -- DangDM                     # positional → one tab, current month
+npm run sync -- --tab DangDM               # explicit flag → one tab, current month
+npm run sync -- --all                      # iterate every tab in tabs.config.ts
+npm run sync -- DangDM --month 3/2026      # one tab, specific month
+npm run sync -- --all --month 12/2025      # every tab, specific month
 ```
+
+The `--month M/YYYY` flag replaces the system-derived "current month" with the given label. It passes through `syncTab` as a reference date, so the sync path is otherwise identical (filter by Assignee + candidate window of [previous, target] + drop tasks already present in other sections + write the target section).
 
 Exit codes: `0` ok, `1` runtime failure (any tab), `2` usage error.
 

@@ -5,30 +5,47 @@ import { fetchAllPages } from "./notion/client.ts";
 import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab } from "./sync.ts";
+import { monthLabelToDate } from "./util/month.ts";
 import { resolveTabs, type TabEntry } from "../tabs.config.ts";
 
 const ROOT_TOKEN_ENV_PATH = resolve(import.meta.dirname, "../../../../.token.env");
 loadDotenv({ path: ROOT_TOKEN_ENV_PATH });
 
+const MONTH_LABEL_PATTERN = /^\d{1,2}\/\d{4}$/;
+
 interface ParsedArguments {
   tabName?: string;
   syncAll: boolean;
+  monthLabel?: string;
 }
 
 function parseCliArguments(argv: string[]): ParsedArguments {
   const userArguments = argv.slice(2);
+  const parsed: ParsedArguments = { syncAll: false };
 
-  if (userArguments.includes("--all")) return { syncAll: true };
+  for (let index = 0; index < userArguments.length; index++) {
+    const currentArgument = userArguments[index];
 
-  const flagIndex = userArguments.indexOf("--tab");
-  if (flagIndex >= 0 && userArguments[flagIndex + 1]) {
-    return { syncAll: false, tabName: userArguments[flagIndex + 1] };
+    if (currentArgument === "--all") {
+      parsed.syncAll = true;
+      continue;
+    }
+
+    if (currentArgument === "--tab") {
+      parsed.tabName = userArguments[++index];
+      continue;
+    }
+
+    if (currentArgument === "--month") {
+      parsed.monthLabel = userArguments[++index];
+      continue;
+    }
+
+    if (currentArgument.startsWith("--")) continue;
+    if (!parsed.tabName) parsed.tabName = currentArgument;
   }
 
-  const positional = userArguments.find((value) => !value.startsWith("--"));
-  if (positional) return { syncAll: false, tabName: positional };
-
-  return { syncAll: false };
+  return parsed;
 }
 
 function resolveTargetTabs(
@@ -39,7 +56,9 @@ function resolveTargetTabs(
   if (parsed.syncAll) return configuredTabs;
 
   if (!parsed.tabName) {
-    logger.error("Usage: npm run sync -- <tab-name> | --tab <name> | --all");
+    logger.error(
+      "Usage: npm run sync -- <tab-name> [--month M/YYYY] | --tab <name> [--month M/YYYY] | --all [--month M/YYYY]",
+    );
     return null;
   }
 
@@ -49,6 +68,22 @@ function resolveTargetTabs(
   const availableTabs = configuredTabs.map((entry) => entry.tabName).join(", ");
   logger.error(`Tab "${parsed.tabName}" not in tabs.config.ts. Available: ${availableTabs}`);
   return null;
+}
+
+function resolveReferenceDate(parsed: ParsedArguments, logger: Logger): Date | null {
+  if (!parsed.monthLabel) return new Date();
+
+  if (!MONTH_LABEL_PATTERN.test(parsed.monthLabel)) {
+    logger.error(`--month must be M/YYYY (e.g. 3/2026), got: "${parsed.monthLabel}"`);
+    return null;
+  }
+
+  try {
+    return monthLabelToDate(parsed.monthLabel);
+  } catch (cause) {
+    logger.error(`--month rejected: ${(cause as Error).message}`);
+    return null;
+  }
 }
 
 async function main(): Promise<void> {
@@ -62,8 +97,13 @@ async function main(): Promise<void> {
   const configuredTabs = resolveTabs();
 
   const targetTabs = resolveTargetTabs(parsed, configuredTabs, logger);
-  if (!targetTabs) {
-    process.exit(2);
+  if (!targetTabs) process.exit(2);
+
+  const referenceDate = resolveReferenceDate(parsed, logger);
+  if (!referenceDate) process.exit(2);
+
+  if (parsed.monthLabel) {
+    logger.info(`Using explicit month override: ${parsed.monthLabel}`);
   }
 
   logger.info(`Fetching all pages from Notion DB ${appConfig.notionDatabaseId}...`);
@@ -84,6 +124,7 @@ async function main(): Promise<void> {
         allPages,
         sheets,
         logger,
+        now: referenceDate,
       });
     } catch (cause) {
       const failureMessage = `Tab "${target.tabName}" failed: ${(cause as Error).message}`;

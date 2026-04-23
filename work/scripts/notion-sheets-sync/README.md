@@ -81,7 +81,7 @@ Tab names are auto-derived from Vietnamese names:
 ## Run
 
 ```bash
-# Sync a single tab (positional)
+# Sync the current-month section of a single tab (positional)
 npm run sync -- DangDM
 
 # Equivalent, explicit flag
@@ -89,7 +89,15 @@ npm run sync -- --tab DangDM
 
 # Sync every configured tab (used by cron)
 npm run sync -- --all
+
+# Backfill or re-sync a specific month instead of the current one
+npm run sync -- DangDM --month 3/2026
+npm run sync -- --all --month 12/2025
 ```
+
+`--month M/YYYY` overrides the "current month" that the tool normally picks from the system clock. The same rules apply: the candidate window is that month plus the previous month, tasks already noted in earlier sections are skipped, and user-owned columns (Staging test / Type / Note) in the target section are preserved for matching rows.
+
+> **Caution:** Running `--month <past>` will overwrite the existing section for that month — user-owned columns are preserved per row, but task ordering and totals are rewritten. Prefer running without `--month` for normal day-to-day use.
 
 Exit codes: `0` success · `1` runtime failure · `2` usage error.
 
