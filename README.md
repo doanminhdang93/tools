@@ -44,4 +44,4 @@ JavaScript / TypeScript (Node.js + React). Other languages are fine per-tool whe
 
 ## License
 
-[MIT](LICENSE) © 2026 Dang Doan
+[MIT](LICENSE) © 2026 Dawn
