@@ -41,7 +41,6 @@ export const SYNCABLE_STATUSES = new Set<string>([
   "Testing Pro",
   "Testing",
   "Waiting To Test",
-  "Doing",
   "Wait to review",
   "Reviewing",
   "Live",
