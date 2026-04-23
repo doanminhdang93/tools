@@ -36,20 +36,38 @@ export const USER_OWNED_COLUMNS = [
 
 export const MONTH_HEADER_PATTERN = /^(\d{1,2})\/(\d{4})$/;
 
-export const SYNCABLE_STATUSES = [
-  "Done",
-  "Testing Pro",
-  "Testing",
-  "Waiting To Test",
-  "Wait to Review",
-  "Reviewing",
-  "Live",
-] as const;
+// Canonical Notion Status → canonical Sheet dropdown value.
+// Key = exactly what Notion reports (from DB schema).
+// Value = exactly what the target Sheet's Status column dropdown accepts.
+// Notion and Sheet disagree on casing for a couple of entries, and
+// "Wait To Live" in Notion is shown as "Live" in the Sheet, so an explicit
+// map keeps both sides honest.
+const NOTION_TO_SHEET_STATUS = {
+  Done: "Done",
+  "Testing Pro": "Testing Pro",
+  Testing: "Testing",
+  "Waiting To Test": "Waiting To Test",
+  "Wait To Review": "Wait to Review",
+  Reviewing: "Reviewing",
+  "Wait To Live": "Live",
+} as const;
 
-const SYNCABLE_STATUSES_LOWERCASED = new Set<string>(
-  SYNCABLE_STATUSES.map((status) => status.toLowerCase()),
+export const SYNCABLE_STATUSES = Object.keys(NOTION_TO_SHEET_STATUS);
+
+const SHEET_STATUS_BY_LOWERCASE_NOTION = new Map<string, string>(
+  Object.entries(NOTION_TO_SHEET_STATUS).map(([notionStatus, sheetStatus]) => [
+    notionStatus.trim().toLowerCase(),
+    sheetStatus,
+  ]),
 );
 
 export function isSyncableStatus(status: string): boolean {
-  return SYNCABLE_STATUSES_LOWERCASED.has(status.trim().toLowerCase());
+  return SHEET_STATUS_BY_LOWERCASE_NOTION.has(status.trim().toLowerCase());
+}
+
+export function toSheetStatus(notionStatus: string): string {
+  const sheetStatus = SHEET_STATUS_BY_LOWERCASE_NOTION.get(
+    notionStatus.trim().toLowerCase(),
+  );
+  return sheetStatus ?? notionStatus;
 }

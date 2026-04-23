@@ -8,6 +8,7 @@ import {
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
   isSyncableStatus,
+  toSheetStatus,
 } from "./constants.ts";
 import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./util/month.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
@@ -170,7 +171,7 @@ function buildTaskRow(page: NotionPage, existingRow: string[] | undefined): stri
   row[COLUMN_INDEX.title] = titleOf(page);
   row[COLUMN_INDEX.link] = buildNotionUrl(page.id);
   row[COLUMN_INDEX.app] = firstTagNameOf(page);
-  row[COLUMN_INDEX.status] = statusOf(page);
+  row[COLUMN_INDEX.status] = toSheetStatus(statusOf(page));
   row[COLUMN_INDEX.point] = String(sizeCardNumberOf(page));
   row[COLUMN_INDEX.money] = "";
 
