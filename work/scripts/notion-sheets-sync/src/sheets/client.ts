@@ -115,7 +115,11 @@ async function applySectionStyle(
   const sheetId = await lookupTabSheetId(sheetsApi, spreadsheetId, tabSheetIdCache, tabName);
 
   const requests: sheets_v4.Schema$Request[] = [
-    copyFormatRequest(sheetId, plan.referenceSeparatorRow, plan.destinationSeparatorRow),
+    paintSeparatorAcrossAllColumnsRequest(
+      sheetId,
+      plan.referenceSeparatorRow,
+      plan.destinationSeparatorRow,
+    ),
     copyFormatRequest(sheetId, plan.referenceHeaderRow, plan.destinationHeaderRow),
     clearDataValidationRequest(sheetId, plan.destinationSeparatorRow),
     clearDataValidationRequest(sheetId, plan.destinationHeaderRow),
@@ -136,6 +140,31 @@ function copyFormatRequest(
     copyPaste: {
       source: fullWidthRowRange(sheetId, sourceRowOneBased),
       destination: fullWidthRowRange(sheetId, destinationRowOneBased),
+      pasteType: "PASTE_FORMAT",
+    },
+  };
+}
+
+// Repeat the reference separator's column-A format across every column of the
+// destination separator. The Sheets API repeats the source range when the
+// destination is larger, so a 1-column source fills all SHEET_COLUMN_COUNT
+// destination columns — guaranteeing a full-width purple band even if the
+// reference section predates later column expansions.
+function paintSeparatorAcrossAllColumnsRequest(
+  sheetId: number,
+  referenceSeparatorRow: number,
+  destinationSeparatorRow: number,
+): sheets_v4.Schema$Request {
+  return {
+    copyPaste: {
+      source: {
+        sheetId,
+        startRowIndex: referenceSeparatorRow - 1,
+        endRowIndex: referenceSeparatorRow,
+        startColumnIndex: 0,
+        endColumnIndex: 1,
+      },
+      destination: fullWidthRowRange(sheetId, destinationSeparatorRow),
       pasteType: "PASTE_FORMAT",
     },
   };

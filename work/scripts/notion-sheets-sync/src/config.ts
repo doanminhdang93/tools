@@ -10,6 +10,10 @@ const ConfigSchema = z.object({
     .string()
     .optional()
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+  SYNC_CRON_TAB: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 });
 
 export interface Config {
@@ -19,6 +23,7 @@ export interface Config {
   googleServiceAccountKeyFile: string;
   slackBotToken?: string;
   notifyOnErrorChannel?: string;
+  syncCronTab?: string;
 }
 
 function formatValidationError(error: z.ZodError): string {
@@ -43,5 +48,6 @@ export function loadConfig(): Config {
     googleServiceAccountKeyFile: environment.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
     slackBotToken: environment.SLACK_BOT_TOKEN,
     notifyOnErrorChannel: environment.NOTIFY_ON_ERROR_CHANNEL,
+    syncCronTab: environment.SYNC_CRON_TAB,
   };
 }

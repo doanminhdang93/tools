@@ -17,18 +17,24 @@ const MONTH_LABEL_PATTERN = /^\d{1,2}\/\d{4}$/;
 interface ParsedArguments {
   tabName?: string;
   syncAll: boolean;
+  cronMode: boolean;
   monthLabel?: string;
 }
 
 function parseCliArguments(argv: string[]): ParsedArguments {
   const userArguments = argv.slice(2);
-  const parsed: ParsedArguments = { syncAll: false };
+  const parsed: ParsedArguments = { syncAll: false, cronMode: false };
 
   for (let index = 0; index < userArguments.length; index++) {
     const currentArgument = userArguments[index];
 
     if (currentArgument === "--all") {
       parsed.syncAll = true;
+      continue;
+    }
+
+    if (currentArgument === "--cron") {
+      parsed.cronMode = true;
       continue;
     }
 
@@ -47,6 +53,18 @@ function parseCliArguments(argv: string[]): ParsedArguments {
   }
 
   return parsed;
+}
+
+// `--cron` resolves to the tab named in SYNC_CRON_TAB env (single-user install),
+// or falls back to --all when the env var is absent (central runner install).
+function applyCronDefault(parsed: ParsedArguments, syncCronTab: string | undefined): void {
+  if (!parsed.cronMode) return;
+  if (parsed.syncAll || parsed.tabName) return;
+  if (syncCronTab) {
+    parsed.tabName = syncCronTab;
+  } else {
+    parsed.syncAll = true;
+  }
 }
 
 function pickTabsForRun(
@@ -95,6 +113,7 @@ async function main(): Promise<void> {
   });
 
   const parsed = parseCliArguments(process.argv);
+  applyCronDefault(parsed, appConfig.syncCronTab);
 
   const referenceDate = resolveReferenceDate(parsed, logger);
   if (!referenceDate) process.exit(2);

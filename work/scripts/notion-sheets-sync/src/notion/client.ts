@@ -6,7 +6,7 @@ export interface NotionPage {
 }
 
 const NOTION_PAGE_SIZE = 100;
-const PEOPLE_FIELDS_FOR_INVOLVEMENT = ["Assignee", "Follower"] as const;
+const ASSIGNEE_FIELD = "Assignee";
 
 export async function fetchAllPages(
   notionApiKey: string,
@@ -37,34 +37,25 @@ export async function fetchAllPages(
   return collected;
 }
 
-export function filterByInvolvedPerson(
+export function filterByAssignee(
   pages: NotionPage[],
   personName: string,
 ): NotionPage[] {
-  return pages.filter((page) => isInvolvedInPage(page, personName));
+  return pages.filter((page) => assigneeNamesOnPage(page).includes(personName));
 }
 
-export function collectInvolvedPeopleNames(pages: NotionPage[]): Set<string> {
+export function collectAssigneeNames(pages: NotionPage[]): Set<string> {
   const names = new Set<string>();
   for (const page of pages) {
-    for (const field of PEOPLE_FIELDS_FOR_INVOLVEMENT) {
-      for (const name of peopleNamesFromField(page, field)) {
-        names.add(name);
-      }
+    for (const name of assigneeNamesOnPage(page)) {
+      names.add(name);
     }
   }
   return names;
 }
 
-function isInvolvedInPage(page: NotionPage, personName: string): boolean {
-  for (const field of PEOPLE_FIELDS_FOR_INVOLVEMENT) {
-    if (peopleNamesFromField(page, field).includes(personName)) return true;
-  }
-  return false;
-}
-
-function peopleNamesFromField(page: NotionPage, fieldName: string): string[] {
-  const property = page.properties[fieldName];
+function assigneeNamesOnPage(page: NotionPage): string[] {
+  const property = page.properties[ASSIGNEE_FIELD];
   if (!property || property.type !== "people") return [];
 
   const people = (property as { people?: { name?: string | null }[] }).people;

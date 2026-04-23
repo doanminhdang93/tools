@@ -10,9 +10,9 @@ export const SHEET_COLUMN_HEADERS = [
   "Status",
   "Point",
   "Money",
-  "Note",
   "Assignees",
   "Followers",
+  "Note",
 ] as const;
 
 export const SHEET_COLUMN_COUNT = SHEET_COLUMN_HEADERS.length;
@@ -27,9 +27,9 @@ export const COLUMN_INDEX = {
   status: 6,
   point: 7,
   money: 8,
-  note: 9,
-  assignees: 10,
-  followers: 11,
+  assignees: 9,
+  followers: 10,
+  note: 11,
 } as const;
 
 export const USER_OWNED_COLUMNS = [
@@ -37,6 +37,24 @@ export const USER_OWNED_COLUMNS = [
   COLUMN_INDEX.type,
   COLUMN_INDEX.note,
 ] as const;
+
+// Notion Tag (first value) → Sheet "App" column value.
+// Notion names are spelled out; the sheet uses short codes.
+const NOTION_TAG_TO_SHEET_APP = {
+  "Checkout Upsell": "CKU",
+} as const;
+
+const SHEET_APP_BY_LOWERCASE_NOTION_TAG = new Map<string, string>(
+  Object.entries(NOTION_TAG_TO_SHEET_APP).map(([notionTag, sheetApp]) => [
+    notionTag.trim().toLowerCase(),
+    sheetApp,
+  ]),
+);
+
+export function toSheetApp(notionTag: string): string {
+  const sheetApp = SHEET_APP_BY_LOWERCASE_NOTION_TAG.get(notionTag.trim().toLowerCase());
+  return sheetApp ?? notionTag;
+}
 
 export const MONTH_HEADER_PATTERN = /^(\d{1,2})\/(\d{4})$/;
 

@@ -1,6 +1,6 @@
 import type { SheetsClient } from "./sheets/client.ts";
 import type { NotionPage } from "./notion/client.ts";
-import { filterByInvolvedPerson } from "./notion/client.ts";
+import { filterByAssignee } from "./notion/client.ts";
 import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheets/parser.ts";
 import {
   POINT_VALUE_VND,
@@ -9,6 +9,7 @@ import {
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
   isSyncableStatus,
+  toSheetApp,
   toSheetStatus,
 } from "./constants.ts";
 import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./util/month.ts";
@@ -117,8 +118,8 @@ function pagesInCandidateWindow(
   earlierMonthLabelValue: string,
   pageIdsAlreadyInOtherSections: Set<string>,
 ): NotionPage[] {
-  const involvedPages = filterByInvolvedPerson(allPages, assigneeName);
-  return involvedPages.filter((page) => {
+  const assignedPages = filterByAssignee(allPages, assigneeName);
+  return assignedPages.filter((page) => {
     if (!isSyncableStatus(statusOf(page))) return false;
 
     const createdIso = createdTimeOf(page);
@@ -175,7 +176,7 @@ function buildTaskRow(page: NotionPage, existingRow: string[] | undefined): stri
   row[COLUMN_INDEX.month] = "";
   row[COLUMN_INDEX.title] = titleOf(page);
   row[COLUMN_INDEX.link] = buildNotionUrl(page.id);
-  row[COLUMN_INDEX.app] = firstTagNameOf(page);
+  row[COLUMN_INDEX.app] = toSheetApp(firstTagNameOf(page));
   row[COLUMN_INDEX.status] = toSheetStatus(statusOf(page));
   row[COLUMN_INDEX.point] = String(sizeCardNumberOf(page));
   row[COLUMN_INDEX.money] = "";

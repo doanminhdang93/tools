@@ -7,7 +7,9 @@
     "sync": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "install-cron": "./commands/install-cron.sh",
+    "uninstall-cron": "./commands/uninstall-cron.sh"
   },
   "dependencies": {
     "@notionhq/client": "^2.2.15",

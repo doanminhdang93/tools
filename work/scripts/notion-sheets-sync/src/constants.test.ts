@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isSyncableStatus, SYNCABLE_STATUSES, toSheetStatus } from "./constants.ts";
+import { isSyncableStatus, SYNCABLE_STATUSES, toSheetApp, toSheetStatus } from "./constants.ts";
 
 describe("isSyncableStatus", () => {
   it("accepts the canonical Notion casing", () => {
@@ -51,5 +51,19 @@ describe("toSheetStatus", () => {
 
   it("returns the raw Notion value for unmapped statuses", () => {
     expect(toSheetStatus("Archived")).toBe("Archived");
+  });
+});
+
+describe("toSheetApp", () => {
+  it("rewrites 'Checkout Upsell' (Notion tag) to 'CKU' (Sheet App)", () => {
+    expect(toSheetApp("Checkout Upsell")).toBe("CKU");
+    expect(toSheetApp("checkout upsell")).toBe("CKU");
+    expect(toSheetApp("  CHECKOUT UPSELL  ")).toBe("CKU");
+  });
+
+  it("passes through unmapped tag values unchanged", () => {
+    expect(toSheetApp("PPU")).toBe("PPU");
+    expect(toSheetApp("CKU")).toBe("CKU");
+    expect(toSheetApp("")).toBe("");
   });
 });

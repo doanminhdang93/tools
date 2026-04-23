@@ -1,4 +1,4 @@
-import { collectInvolvedPeopleNames, type NotionPage } from "./notion/client.ts";
+import { collectAssigneeNames, type NotionPage } from "./notion/client.ts";
 import type { SheetsClient } from "./sheets/client.ts";
 import { deriveTabName } from "./util/name.ts";
 
@@ -24,11 +24,11 @@ export async function resolveTargetTabs(args: ResolveTabsArgs): Promise<TabEntry
     }));
   }
 
-  const involvedNames = collectInvolvedPeopleNames(allPages);
+  const assigneeNames = collectAssigneeNames(allPages);
   const existingTabNames = new Set(await sheets.listTabNames());
 
   const matched: TabEntry[] = [];
-  for (const notionAssigneeName of involvedNames) {
+  for (const notionAssigneeName of assigneeNames) {
     const tabName = overrides[notionAssigneeName] ?? deriveTabName(notionAssigneeName);
     if (existingTabNames.has(tabName)) {
       matched.push({ notionAssigneeName, tabName });

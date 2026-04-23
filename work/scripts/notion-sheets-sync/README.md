@@ -4,9 +4,29 @@ Syncs tasks from the `avadagroup` Notion "Tasks" database into a Google Sheet, w
 
 - Design: [docs/design.md](docs/design.md)
 
+## Quick start (fresh clone)
+
+```bash
+git clone <repo> && cd <repo>/work/scripts/notion-sheets-sync
+npm install
+```
+
+Manual setup (once per machine — details in the [Setup](#setup) section below):
+
+1. Drop `service-account.json` into this folder (Setup § 2) and share the target Sheet with the SA email as Editor
+2. Make sure the Notion integration has access to the Tasks DB (Setup § 3)
+3. Fill the workspace-root `.token.env` (Setup § 4) — and set **`SYNC_CRON_TAB=<your tab>`** so your hourly cron only touches your own tab (leave empty if you want the cron to sync every tab)
+
+Then run:
+
+```bash
+npm run sync -- --cron   # one-off; mirrors what cron will do
+npm run install-cron     # install the hourly cron entry
+```
+
 ## What gets synced
 
-For each tab (one per person), the tool finds (or creates) the month section whose label matches the target month (the current month by default, or whatever `--month` specifies), and fills its task rows from Notion. A task shows up in a person's tab if they are listed as **Assignee** OR **Follower** on that Notion page.
+For each tab (one per person), the tool finds (or creates) the month section whose label matches the target month (the current month by default, or whatever `--month` specifies), and fills its task rows from Notion. A task shows up in a person's tab if they are listed as **Assignee** on that Notion page. Followers are displayed for context but do not cause the task to appear on the follower's own tab.
 
 Task rows hold these columns:
 
@@ -15,19 +35,19 @@ Task rows hold these columns:
 | A | Month & Stt | (empty on task rows; month label on section header) | yes — section header only |
 | B | Task title | `product` (title) | yes |
 | C | link | `https://www.notion.so/<page-id>` | yes |
-| D | App | `Tag` (first value) | yes |
+| D | App | `Tag` (first value, with `Checkout Upsell` → `CKU` mapping) | yes |
 | E | Staging test | — | **preserved** (user-managed) |
 | F | Type | — | **preserved** (user-managed) |
 | G | Status | `Status` (mapped to Sheet dropdown form) | yes |
 | H | Point | `Size Card` (select, numeric name) | yes |
 | I | Money | — (Point × 45,000 VND on section header only) | yes — section header only |
-| J | Note | — | **preserved** (user-managed) |
-| K | Assignees | `Assignee` (people, comma-separated) | yes |
-| L | Followers | `Follower` (people, comma-separated) | yes |
+| J | Assignees | `Assignee` (people, comma-separated) | yes |
+| K | Followers | `Follower` (people, comma-separated) | yes |
+| L | Note | — | **preserved** (user-managed) |
 
 The section header row is recomputed every run via formulas: `Point = SUM(H<firstTask>:H<lastTask>)`, `Money = Point × 45000`. Row 1 headers are also written by the tool on every run (idempotent), so spreading the tool to a new tab requires no manual header setup.
 
-Upsert matches by the 32-character Notion page id embedded in the `link` URL of column C — rows keep their position; user-owned columns (E, F, J) are kept verbatim.
+Upsert matches by the 32-character Notion page id embedded in the `link` URL of column C — rows keep their position; user-owned columns (E, F, L) are kept verbatim.
 
 ## Setup
 
@@ -62,11 +82,12 @@ GOOGLE_SHEETS_ID=1RUAGMUsD9HmepUr4Tgpuw5FwaSpcaE16SbWj-IaxH-w
 GOOGLE_SERVICE_ACCOUNT_KEY_FILE=<absolute path to service-account.json>
 SLACK_BOT_TOKEN=<existing>       # optional
 NOTIFY_ON_ERROR_CHANNEL=         # optional — set a channel to enable alerts
+SYNC_CRON_TAB=DangDM             # optional — cron syncs only this tab; unset → cron syncs --all
 ```
 
 ### 5. Assignees → tabs
 
-By default the tool is **fully dynamic**: it scans every Notion task, unions the unique names found in `Assignee` + `Follower`, derives a tab name for each via `deriveTabName(<name>)`, and keeps the ones whose derived name actually matches an existing tab in the target Sheet.
+By default the tool is **fully dynamic**: it scans every Notion task, collects the unique names found in `Assignee`, derives a tab name for each via `deriveTabName(<name>)`, and keeps the ones whose derived name actually matches an existing tab in the target Sheet.
 
 Add a teammate in Notion + create a tab with the matching derived name in the Sheet → the next run picks them up automatically. No code change.
 
@@ -107,8 +128,9 @@ cd /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync
 
 | Flag / position | Meaning | Default |
 | --- | --- | --- |
-| `<tab>` (positional) or `--tab <tab>` | Which tab to sync | required unless `--all` |
-| `--all` | Sync every tab in `tabs.config.ts` | off |
+| `<tab>` (positional) or `--tab <tab>` | Which tab to sync | required unless `--all` / `--cron` |
+| `--all` | Sync every resolved tab | off |
+| `--cron` | Sync the tab named in `SYNC_CRON_TAB`; falls back to `--all` if unset | off — used by the cron wrapper |
 | `--month M/YYYY` | Sync this specific month instead of the system "now" | current month in Vietnam time |
 
 ### Common scenarios
@@ -117,8 +139,11 @@ cd /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync
 # 1) Sync current month for one person (most common)
 npm run sync -- DangDM
 
-# 2) Sync current month for every configured tab (what cron runs every hour)
+# 2) Sync current month for every configured tab
 npm run sync -- --all
+
+# 2b) What hourly cron runs — honours SYNC_CRON_TAB, falls back to --all
+npm run sync -- --cron
 
 # 3) Backfill a specific past month for one tab
 npm run sync -- DangDM --month 3/2026
@@ -161,13 +186,22 @@ $ echo $?
 
 ## Cron (hourly)
 
-A wrapper script `run-sync.sh` is shipped alongside the tool. It sources nvm, changes into the tool directory, and runs `npm run sync -- --all`. Using the wrapper keeps cron working even when you switch Node versions with `nvm use`.
+A wrapper script `commands/run-sync.sh` is shipped alongside the tool. It sources nvm, changes into the tool directory, and runs `npm run sync -- --cron`. Using the wrapper keeps cron working even when you switch Node versions with `nvm use`.
+
+The `--cron` flag picks its target from `.token.env`:
+
+- `SYNC_CRON_TAB=<tab>` set → cron syncs just that tab every hour (per-user install)
+- `SYNC_CRON_TAB` empty / unset → cron syncs `--all` every hour (central runner)
+
+So each teammate who clones the repo edits their own `.token.env` once; no code changes.
 
 Install the hourly cron entry:
 
 ```bash
-( crontab -l 2>/dev/null; echo '0 * * * * /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync/run-sync.sh >> /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync/sync.log 2>&1' ) | crontab -
+npm run install-cron
 ```
+
+The script auto-detects the tool's absolute path — no manual editing needed, and re-running it safely replaces any previous entry for this tool (other crontab lines are preserved).
 
 Verify:
 
@@ -178,13 +212,13 @@ crontab -l
 Logs stream to `sync.log` in the tool folder (gitignored). Tail it after the next top-of-hour firing to confirm:
 
 ```bash
-tail -f /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync/sync.log
+tail -f ./sync.log
 ```
 
-To uninstall:
+Uninstall:
 
 ```bash
-crontab -l | grep -v run-sync.sh | crontab -
+npm run uninstall-cron
 ```
 
 ## Tests
@@ -216,8 +250,12 @@ work/scripts/notion-sheets-sync/
 │   └── util/
 │       ├── month.ts (+.test)   # VN-time month labels, previousMonthLabel, monthLabelToDate
 │       └── name.ts (+.test)    # Vietnamese-name → tab-name derivation
-├── tabs.config.ts            # List of Notion assignees (tab names auto-derived)
-├── service-account.json      # Google credential (gitignored)
+├── commands/
+│   ├── run-sync.sh             # Cron wrapper — sources nvm, runs `npm run sync -- --all`
+│   ├── install-cron.sh         # Installs the hourly cron entry (idempotent)
+│   └── uninstall-cron.sh       # Removes the cron entry for this tool
+├── tabs.config.ts              # List of Notion assignees (tab names auto-derived)
+├── service-account.json        # Google credential (gitignored)
 ├── docs/
 │   └── design.md
 ├── package.json
@@ -228,7 +266,7 @@ work/scripts/notion-sheets-sync/
 
 ## Troubleshooting
 
-- **`Tab "X" not in tabs.config.ts`** — add the assignee's exact Notion name to `assignees`, confirm the derived tab name matches the Sheet tab.
+- **`Tab "X" not resolvable`** — either that tab doesn't exist in the target Sheet, or no Notion person's name derives to it. In auto-discovery mode, the person must appear as an Assignee on at least one task. For strict listing, add their exact Notion name to `assignees` in `tabs.config.ts`.
 - **`403` on Google Sheets** — the target Sheet is not shared with the service-account email as Editor.
 - **`404` on Notion database** — the integration is not connected to the Tasks database in Notion.
 - **Slack alert not firing** — both `SLACK_BOT_TOKEN` and `NOTIFY_ON_ERROR_CHANNEL` must be set; the bot must be a member of the channel.
