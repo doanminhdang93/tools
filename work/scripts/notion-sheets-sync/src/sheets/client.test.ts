@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { columnLetterFor } from "./client.ts";
+import { columnLetterFor, isNonDefaultFill } from "./client.ts";
 
 describe("columnLetterFor", () => {
   it("maps 1..26 to A..Z", () => {
@@ -26,5 +26,21 @@ describe("columnLetterFor", () => {
   it("throws on zero or negative input", () => {
     expect(() => columnLetterFor(0)).toThrow(/>= 1/);
     expect(() => columnLetterFor(-5)).toThrow(/>= 1/);
+  });
+});
+
+describe("isNonDefaultFill", () => {
+  it("treats explicit white (1,1,1) as default", () => {
+    expect(isNonDefaultFill({ red: 1, green: 1, blue: 1 })).toBe(false);
+  });
+
+  it("treats undefined as default", () => {
+    expect(isNonDefaultFill(undefined)).toBe(false);
+  });
+
+  it("detects any channel below 1 as styled", () => {
+    expect(isNonDefaultFill({ red: 0.8, green: 0.5, blue: 1 })).toBe(true);
+    expect(isNonDefaultFill({ red: 1, green: 1, blue: 0.99 })).toBe(true);
+    expect(isNonDefaultFill({ red: 0, green: 0, blue: 0 })).toBe(true);
   });
 });

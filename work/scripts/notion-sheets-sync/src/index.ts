@@ -5,7 +5,6 @@ import { fetchAllPages } from "./notion/client.ts";
 import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab } from "./sync.ts";
-import { monthLabelToDate } from "./util/month.ts";
 import { resolveTargetTabs, type TabEntry } from "./resolve-tabs.ts";
 import { assignees, overrides } from "../tabs.config.ts";
 
@@ -91,20 +90,20 @@ function pickTabsForRun(
   return null;
 }
 
-function resolveReferenceDate(parsed: ParsedArguments, logger: Logger): Date | null {
-  if (!parsed.monthLabel) return new Date();
+function validateMonthLabel(parsed: ParsedArguments, logger: Logger): boolean {
+  if (!parsed.monthLabel) return true;
 
   if (!MONTH_LABEL_PATTERN.test(parsed.monthLabel)) {
     logger.error(`--month must be M/YYYY (e.g. 3/2026), got: "${parsed.monthLabel}"`);
-    return null;
+    return false;
   }
 
-  try {
-    return monthLabelToDate(parsed.monthLabel);
-  } catch (cause) {
-    logger.error(`--month rejected: ${(cause as Error).message}`);
-    return null;
+  const month = Number(parsed.monthLabel.split("/")[0]);
+  if (month < 1 || month > 12) {
+    logger.error(`--month rejected: month out of range in "${parsed.monthLabel}"`);
+    return false;
   }
+  return true;
 }
 
 async function main(): Promise<void> {
@@ -117,8 +116,7 @@ async function main(): Promise<void> {
   const parsed = parseCliArguments(process.argv);
   applyCronDefault(parsed, appConfig.syncCronTab);
 
-  const referenceDate = resolveReferenceDate(parsed, logger);
-  if (!referenceDate) process.exit(2);
+  if (!validateMonthLabel(parsed, logger)) process.exit(2);
 
   if (parsed.monthLabel) {
     logger.info(`Using explicit month override: ${parsed.monthLabel}`);
@@ -164,7 +162,7 @@ async function main(): Promise<void> {
         allPages,
         sheets,
         logger,
-        now: referenceDate,
+        targetMonthOverride: parsed.monthLabel,
       });
     } catch (cause) {
       const failureMessage = `Tab "${target.tabName}" failed: ${(cause as Error).message}`;

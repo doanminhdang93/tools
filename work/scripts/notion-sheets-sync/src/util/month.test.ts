@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   currentMonthLabel,
+  firstInstantOfMonth,
+  lastInstantOfMonth,
   monthLabelFromIsoString,
   monthLabelToDate,
   previousMonthLabel,
@@ -76,5 +78,38 @@ describe("monthLabelToDate", () => {
   it("throws when the month is out of 1..12", () => {
     expect(() => monthLabelToDate("0/2026")).toThrow(/out of range/);
     expect(() => monthLabelToDate("13/2026")).toThrow(/out of range/);
+  });
+});
+
+describe("firstInstantOfMonth", () => {
+  it("returns 00:00 Vietnam time on the first day of the target month", () => {
+    const first = firstInstantOfMonth("4/2026");
+    expect(first.toISOString()).toBe("2026-03-31T17:00:00.000Z");
+  });
+
+  it("round-trips through currentMonthLabel", () => {
+    expect(currentMonthLabel(firstInstantOfMonth("4/2026"))).toBe("4/2026");
+    expect(currentMonthLabel(firstInstantOfMonth("1/2026"))).toBe("1/2026");
+  });
+
+  it("throws on a malformed label", () => {
+    expect(() => firstInstantOfMonth("April 2026")).toThrow(/bad label/);
+  });
+});
+
+describe("lastInstantOfMonth", () => {
+  it("returns 23:59:59.999 Vietnam time on the last day of the target month", () => {
+    const last = lastInstantOfMonth("4/2026");
+    expect(last.toISOString()).toBe("2026-04-30T16:59:59.999Z");
+  });
+
+  it("wraps into the next year at December", () => {
+    const last = lastInstantOfMonth("12/2025");
+    expect(last.toISOString()).toBe("2025-12-31T16:59:59.999Z");
+    expect(currentMonthLabel(last)).toBe("12/2025");
+  });
+
+  it("throws on a malformed label", () => {
+    expect(() => lastInstantOfMonth("April 2026")).toThrow(/bad label/);
   });
 });

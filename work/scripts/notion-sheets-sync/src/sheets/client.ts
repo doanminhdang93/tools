@@ -5,10 +5,22 @@ import { SHEET_COLUMN_COUNT } from "../constants.ts";
 
 export interface SheetsClient {
   readTabValues(tabName: string): Promise<string[][]>;
+  readColumnABackgrounds(tabName: string): Promise<RgbColor[]>;
   writeRange(tabName: string, startRow: number, rows: string[][]): Promise<void>;
   clearRows(tabName: string, startRow: number, endRow: number): Promise<void>;
   applySectionStyle(tabName: string, plan: SectionStylePlan): Promise<void>;
   listTabNames(): Promise<string[]>;
+}
+
+export interface RgbColor {
+  red: number;
+  green: number;
+  blue: number;
+}
+
+export function isNonDefaultFill(color: RgbColor | undefined): boolean {
+  if (!color) return false;
+  return color.red < 1 || color.green < 1 || color.blue < 1;
 }
 
 export interface SectionStylePlan {
@@ -29,6 +41,8 @@ export function createSheetsClient(
 
   return {
     readTabValues: (tabName) => readTabValues(sheetsApi, spreadsheetId, tabName),
+    readColumnABackgrounds: (tabName) =>
+      readColumnABackgrounds(sheetsApi, spreadsheetId, tabName),
     writeRange: (tabName, startRow, rows) =>
       writeRange(sheetsApi, spreadsheetId, tabName, startRow, rows),
     clearRows: (tabName, startRow, endRow) =>
@@ -37,6 +51,28 @@ export function createSheetsClient(
       applySectionStyle(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, plan),
     listTabNames: () => listTabNames(sheetsApi, spreadsheetId),
   };
+}
+
+async function readColumnABackgrounds(
+  sheetsApi: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabName: string,
+): Promise<RgbColor[]> {
+  const response = await sheetsApi.spreadsheets.get({
+    spreadsheetId,
+    ranges: [`${tabName}!A:A`],
+    includeGridData: true,
+    fields: "sheets.data.rowData.values.effectiveFormat.backgroundColor",
+  });
+  const rowData = response.data.sheets?.[0]?.data?.[0]?.rowData ?? [];
+  return rowData.map((row) => {
+    const color = row.values?.[0]?.effectiveFormat?.backgroundColor ?? {};
+    return {
+      red: color.red ?? 1,
+      green: color.green ?? 1,
+      blue: color.blue ?? 1,
+    };
+  });
 }
 
 async function listTabNames(

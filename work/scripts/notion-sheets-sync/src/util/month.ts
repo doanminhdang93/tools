@@ -4,6 +4,29 @@ function toVietnamTime(date: Date): Date {
   return new Date(date.getTime() + VIETNAM_OFFSET_MILLISECONDS);
 }
 
+function parseMonthLabel(monthLabel: string, caller: string): { month: number; year: number } {
+  const match = monthLabel.match(/^(\d{1,2})\/(\d{4})$/);
+  if (!match) throw new Error(`${caller}: bad label "${monthLabel}"`);
+  const month = Number(match[1]);
+  const year = Number(match[2]);
+  if (month < 1 || month > 12) {
+    throw new Error(`${caller}: month out of range in "${monthLabel}"`);
+  }
+  return { month, year };
+}
+
+export function firstInstantOfMonth(monthLabel: string): Date {
+  const { month, year } = parseMonthLabel(monthLabel, "firstInstantOfMonth");
+  return new Date(Date.UTC(year, month - 1, 1) - VIETNAM_OFFSET_MILLISECONDS);
+}
+
+export function lastInstantOfMonth(monthLabel: string): Date {
+  const { month, year } = parseMonthLabel(monthLabel, "lastInstantOfMonth");
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  return new Date(Date.UTC(nextYear, nextMonth - 1, 1) - VIETNAM_OFFSET_MILLISECONDS - 1);
+}
+
 export function currentMonthLabel(now: Date = new Date()): string {
   const vietnamNow = toVietnamTime(now);
   return formatMonthLabel(vietnamNow.getUTCMonth() + 1, vietnamNow.getUTCFullYear());

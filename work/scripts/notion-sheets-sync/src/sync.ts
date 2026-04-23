@@ -12,7 +12,12 @@ import {
   toSheetApp,
   toSheetStatus,
 } from "./constants.ts";
-import { currentMonthLabel, monthLabelFromIsoString, previousMonthLabel } from "./util/month.ts";
+import {
+  firstInstantOfMonth,
+  lastInstantOfMonth,
+  previousMonthLabel,
+} from "./util/month.ts";
+import { resolveTargetMonthLabel } from "./resolve-target.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
 import {
   titleOf,
@@ -32,6 +37,7 @@ export interface SyncTabArgs {
   sheets: SheetsClient;
   logger: Logger;
   now?: Date;
+  targetMonthOverride?: string;
 }
 
 export interface SyncTabResult {
@@ -44,26 +50,39 @@ export interface SyncTabResult {
 }
 
 export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
-  const { tabName, assigneeName, allPages, sheets, logger, now = new Date() } = args;
-
-  const monthLabel = currentMonthLabel(now);
-  const earlierMonthLabel = previousMonthLabel(monthLabel);
-  logger.info(
-    `[${tabName}] syncing ${monthLabel} (candidate window: ${earlierMonthLabel} + ${monthLabel}) for ${assigneeName}`,
-  );
+  const {
+    tabName,
+    assigneeName,
+    allPages,
+    sheets,
+    logger,
+    now = new Date(),
+    targetMonthOverride,
+  } = args;
 
   await sheets.writeRange(tabName, 1, [[...SHEET_COLUMN_HEADERS]]);
 
   const existingRows = await sheets.readTabValues(tabName);
   const parsed = parseTab(existingRows);
-  const existingSection = findSection(parsed, monthLabel);
+  const columnABackgrounds = await sheets.readColumnABackgrounds(tabName);
 
-  const pageIdsInOtherSections = collectPageIdsOutsideCurrentSection(parsed, monthLabel);
+  const targetMonthLabel =
+    targetMonthOverride ?? resolveTargetMonthLabel(parsed, columnABackgrounds, now);
+
+  const windowStart = firstInstantOfMonth(previousMonthLabel(targetMonthLabel));
+  const windowEnd = targetMonthOverride ? lastInstantOfMonth(targetMonthLabel) : now;
+
+  logger.info(
+    `[${tabName}] syncing ${targetMonthLabel} (window ${windowStart.toISOString()} → ${windowEnd.toISOString()}) for ${assigneeName}`,
+  );
+
+  const existingSection = findSection(parsed, targetMonthLabel);
+  const pageIdsInOtherSections = collectPageIdsOutsideCurrentSection(parsed, targetMonthLabel);
   const candidatePages = pagesInCandidateWindow(
     allPages,
     assigneeName,
-    monthLabel,
-    earlierMonthLabel,
+    windowStart,
+    windowEnd,
     pageIdsInOtherSections,
   );
   candidatePages.sort(byCreatedTimeAscending);
@@ -84,7 +103,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     0,
   );
   const totalMoney = totalPoints * POINT_VALUE_VND;
-  const headerRow = buildMonthHeaderRow(monthLabel, writeStartRow, newTaskRows.length);
+  const headerRow = buildMonthHeaderRow(targetMonthLabel, writeStartRow, newTaskRows.length);
 
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...newTaskRows]);
 
@@ -95,15 +114,15 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     }
   }
 
-  await applySectionFormat(sheets, tabName, parsed, monthLabel, writeStartRow, logger);
+  await applySectionFormat(sheets, tabName, parsed, targetMonthLabel, writeStartRow, logger);
 
   logger.info(
-    `[${tabName}] done — ${monthLabel} tasks=${newTaskRows.length} points=${totalPoints} money=${totalMoney.toLocaleString("en-US")}`,
+    `[${tabName}] done — ${targetMonthLabel} tasks=${newTaskRows.length} points=${totalPoints} money=${totalMoney.toLocaleString("en-US")}`,
   );
 
   return {
     tabName,
-    monthLabel,
+    monthLabel: targetMonthLabel,
     totalPoints,
     totalMoney,
     taskCount: newTaskRows.length,
@@ -114,8 +133,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
 function pagesInCandidateWindow(
   allPages: NotionPage[],
   assigneeName: string,
-  currentMonthLabelValue: string,
-  earlierMonthLabelValue: string,
+  windowStart: Date,
+  windowEnd: Date,
   pageIdsAlreadyInOtherSections: Set<string>,
 ): NotionPage[] {
   const assignedPages = filterByAssignee(allPages, assigneeName);
@@ -125,10 +144,8 @@ function pagesInCandidateWindow(
     const createdIso = createdTimeOf(page);
     if (!createdIso) return false;
 
-    const createdMonth = monthLabelFromIsoString(createdIso);
-    if (createdMonth !== currentMonthLabelValue && createdMonth !== earlierMonthLabelValue) {
-      return false;
-    }
+    const createdAt = new Date(createdIso);
+    if (createdAt < windowStart || createdAt > windowEnd) return false;
 
     const normalizedPageId = normalizeNotionPageId(page.id);
     if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;

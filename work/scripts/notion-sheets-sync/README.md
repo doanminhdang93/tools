@@ -26,7 +26,19 @@ npm run install-cron     # install the hourly cron entry
 
 ## What gets synced
 
-For each tab (one per person), the tool finds (or creates) the month section whose label matches the target month (the current month by default, or whatever `--month` specifies), and fills its task rows from Notion. A task shows up in a person's tab if they are listed as **Assignee** on that Notion page. Followers are displayed for context but do not cause the task to appear on the follower's own tab.
+For each tab (one per person), the tool resolves the **target month section** and fills it from Notion. A task shows up in a person's tab if they are listed as **Assignee** on that Notion page. Followers are displayed for context but do not cause the task to appear on the follower's own tab.
+
+**How the target month is chosen (default run, no `--month`):**
+
+1. If the **current calendar month**'s section exists in the tab **and is still open** → target = current month.
+2. Else if the **previous calendar month**'s section exists **and is still open** → target = previous month.
+3. Else → target = current calendar month (section is created from scratch).
+
+A section is considered **closed** when any other section sits below it, or when the row immediately below its last task has a **non-default background fill** (e.g. the purple separator row you add manually to "chốt" a month). So the flow is: keep adding tasks to April's section through late April / early May; when you're done with April, paint the row below it purple — next sync auto-creates a May section.
+
+**Candidate window:** tasks whose Notion `created_time` falls in `[1st of previousMonth(target), runtime]`. So running on 3/5/2026 with target = April will sweep every task created between 1/3/2026 and the moment you ran the command. Tasks already noted in other month sections of this tab are skipped (upsert keeps them where they are).
+
+`--month M/YYYY` bypasses the auto-resolution: it forces the target to `M/YYYY` and caps the window at the last instant of that month (useful for backfills).
 
 Task rows hold these columns:
 
@@ -131,7 +143,7 @@ cd /Users/dangdoan/Documents/workspace/Tools/work/scripts/notion-sheets-sync
 | `<tab>` (positional) or `--tab <tab>` | Which tab to sync | required unless `--all` / `--cron` |
 | `--all` | Sync every resolved tab | off |
 | `--cron` | Read `SYNC_CRON_TAB`: `all` (or unset) → sync every tab; any other value → sync only that tab | off — used by the cron wrapper |
-| `--month M/YYYY` | Sync this specific month instead of the system "now" | current month in Vietnam time |
+| `--month M/YYYY` | Force the target section to this month and cap the window at month-end (backfill) | auto-resolve from sheet state |
 
 ### Common scenarios
 
@@ -157,9 +169,10 @@ npm run sync -- --tab DangDM
 
 ### How `--month` behaves
 
-`--month M/YYYY` replaces the system-derived "current month". Everything downstream is identical to the default path:
+`--month M/YYYY` bypasses the open-section auto-resolution:
 
-- Candidate window = target month + previous month (in Vietnam time)
+- Target section = `M/YYYY` exactly (created if missing)
+- Candidate window = `[1st of previousMonth(M/YYYY), last instant of M/YYYY]` (Vietnam time)
 - Tasks already noted in other month sections of the sheet are skipped
 - Matching rows keep their user-owned columns (Staging test / Type / Note) verbatim
 
