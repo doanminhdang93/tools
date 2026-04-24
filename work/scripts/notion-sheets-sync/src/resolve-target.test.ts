@@ -8,8 +8,6 @@ const HEADER_ROW = [
   "Task title",
   "link",
   "App",
-  "Staging test",
-  "Type",
   "Status",
   "Point",
   "Money",
@@ -31,11 +29,11 @@ describe("isSectionClosed", () => {
   it("marks a non-last section as closed", () => {
     const rows = [
       HEADER_ROW,
-      ["3/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "March task", "url-1", "", "", "", "Done", "1", "", ""],
+      ["3/2026", "", "", "", "", "0", "0", ""],
+      ["", "March task", "url-1", "", "Done", "1", "", ""],
       [],
-      ["4/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "April task", "url-2", "", "", "", "Done", "1", "", ""],
+      ["4/2026", "", "", "", "", "0", "0", ""],
+      ["", "April task", "url-2", "", "Done", "1", "", ""],
     ];
     const parsed = parseTab(rows);
     const march = parsed.sections[0];
@@ -45,8 +43,8 @@ describe("isSectionClosed", () => {
   it("treats a last section with styled separator below as closed", () => {
     const rows = [
       HEADER_ROW,
-      ["4/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "April task", "url-1", "", "", "", "Done", "1", "", ""],
+      ["4/2026", "", "", "", "", "0", "0", ""],
+      ["", "April task", "url-1", "", "Done", "1", "", ""],
     ];
     const parsed = parseTab(rows);
     const backgrounds = whiteBackgrounds(rows.length + 1);
@@ -58,8 +56,8 @@ describe("isSectionClosed", () => {
   it("treats a last section without styled separator as open", () => {
     const rows = [
       HEADER_ROW,
-      ["4/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "April task", "url-1", "", "", "", "Done", "1", "", ""],
+      ["4/2026", "", "", "", "", "0", "0", ""],
+      ["", "April task", "url-1", "", "Done", "1", "", ""],
     ];
     const parsed = parseTab(rows);
     const april = parsed.sections[0];
@@ -71,11 +69,11 @@ describe("resolveTargetMonthLabel", () => {
   it("targets previous month when its section is the last and open (screenshot scenario)", () => {
     const rows = [
       HEADER_ROW,
-      ["3/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "March task", "u", "", "", "", "Done", "1", "", ""],
+      ["3/2026", "", "", "", "", "0", "0", ""],
+      ["", "March task", "u", "", "Done", "1", "", ""],
       [],
-      ["4/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "April task", "u", "", "", "", "Done", "1", "", ""],
+      ["4/2026", "", "", "", "", "0", "0", ""],
+      ["", "April task", "u", "", "Done", "1", "", ""],
     ];
     const parsed = parseTab(rows);
     expect(resolveTargetMonthLabel(parsed, whiteBackgrounds(rows.length), MAY_3_2026)).toBe(
@@ -86,8 +84,8 @@ describe("resolveTargetMonthLabel", () => {
   it("targets current month when previous month is closed", () => {
     const rows = [
       HEADER_ROW,
-      ["4/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "April task", "u", "", "", "", "Done", "1", "", ""],
+      ["4/2026", "", "", "", "", "0", "0", ""],
+      ["", "April task", "u", "", "Done", "1", "", ""],
     ];
     const parsed = parseTab(rows);
     const backgrounds = whiteBackgrounds(rows.length + 1);
@@ -98,8 +96,8 @@ describe("resolveTargetMonthLabel", () => {
   it("targets current month when no relevant sections exist", () => {
     const rows = [
       HEADER_ROW,
-      ["3/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "March task", "u", "", "", "", "Done", "1", "", ""],
+      ["3/2026", "", "", "", "", "0", "0", ""],
+      ["", "March task", "u", "", "Done", "1", "", ""],
     ];
     const parsed = parseTab(rows);
     expect(resolveTargetMonthLabel(parsed, whiteBackgrounds(rows.length), MAY_3_2026)).toBe(
@@ -110,11 +108,11 @@ describe("resolveTargetMonthLabel", () => {
   it("targets current month when its own section is open", () => {
     const rows = [
       HEADER_ROW,
-      ["4/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "April task", "u", "", "", "", "Done", "1", "", ""],
+      ["4/2026", "", "", "", "", "0", "0", ""],
+      ["", "April task", "u", "", "Done", "1", "", ""],
       [],
-      ["5/2026", "", "", "", "", "", "", "0", "0", ""],
-      ["", "May task", "u", "", "", "", "Done", "1", "", ""],
+      ["5/2026", "", "", "", "", "0", "0", ""],
+      ["", "May task", "u", "", "Done", "1", "", ""],
     ];
     const parsed = parseTab(rows);
     expect(resolveTargetMonthLabel(parsed, whiteBackgrounds(rows.length), MAY_3_2026)).toBe(

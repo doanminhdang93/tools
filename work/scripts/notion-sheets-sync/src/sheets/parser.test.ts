@@ -6,8 +6,6 @@ const HEADER_ROW = [
   "Task title",
   "link",
   "App",
-  "Staging test",
-  "Type",
   "Status",
   "Point",
   "Money",
@@ -24,9 +22,9 @@ describe("parseTab", () => {
   it("parses a single month section with tasks", () => {
     const rows = [
       HEADER_ROW,
-      ["4/2025", "", "", "", "", "", "", "103", "4635000", ""],
-      ["", "Task 1", "url-1", "PPU", "", "Feature", "Done", "2", "", ""],
-      ["", "Task 2", "url-2", "PPU", "", "Feature", "Done", "3", "", ""],
+      ["4/2025", "", "", "", "", "103", "4635000", ""],
+      ["", "Task 1", "url-1", "PPU", "Done", "2", "", ""],
+      ["", "Task 2", "url-2", "PPU", "Done", "3", "", ""],
     ];
 
     const parsed = parseTab(rows);
@@ -43,11 +41,11 @@ describe("parseTab", () => {
   it("splits multiple sections on blank separator rows", () => {
     const rows = [
       HEADER_ROW,
-      ["4/2025", "", "", "", "", "", "", "100", "4500000", ""],
-      ["", "T1", "u1", "PPU", "", "Feature", "Done", "5", "", ""],
+      ["4/2025", "", "", "", "", "100", "4500000", ""],
+      ["", "T1", "u1", "PPU", "Done", "5", "", ""],
       [],
-      ["5/2025", "", "", "", "", "", "", "200", "9000000", ""],
-      ["", "T2", "u2", "BS", "", "Hotfix", "Done", "3", "", ""],
+      ["5/2025", "", "", "", "", "200", "9000000", ""],
+      ["", "T2", "u2", "BS", "Done", "3", "", ""],
     ];
 
     const parsed = parseTab(rows);
@@ -62,8 +60,8 @@ describe("parseTab", () => {
   it("findSection locates by month label", () => {
     const rows = [
       HEADER_ROW,
-      ["4/2025", "", "", "", "", "", "", "100", "4500000", ""],
-      ["", "T1", "u1", "PPU", "", "Feature", "Done", "5", "", ""],
+      ["4/2025", "", "", "", "", "100", "4500000", ""],
+      ["", "T1", "u1", "PPU", "Done", "5", "", ""],
     ];
     const parsed = parseTab(rows);
 
@@ -72,7 +70,7 @@ describe("parseTab", () => {
   });
 
   it("accepts month label with single-digit month", () => {
-    const rows = [HEADER_ROW, ["9/2025", "", "", "", "", "", "", "0", "0", ""]];
+    const rows = [HEADER_ROW, ["9/2025", "", "", "", "", "0", "0", ""]];
     const parsed = parseTab(rows);
     expect(parsed.sections[0].monthLabel).toBe("9/2025");
   });
@@ -80,9 +78,9 @@ describe("parseTab", () => {
   it("ignores stray task rows before any month header", () => {
     const rows = [
       HEADER_ROW,
-      ["", "Stray", "u", "PPU", "", "Feature", "Done", "1", "", ""],
-      ["4/2025", "", "", "", "", "", "", "0", "0", ""],
-      ["", "T1", "u1", "PPU", "", "Feature", "Done", "5", "", ""],
+      ["", "Stray", "u", "PPU", "Done", "1", "", ""],
+      ["4/2025", "", "", "", "", "0", "0", ""],
+      ["", "T1", "u1", "PPU", "Done", "5", "", ""],
     ];
 
     const parsed = parseTab(rows);

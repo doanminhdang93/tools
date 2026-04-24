@@ -5,8 +5,6 @@ export const SHEET_COLUMN_HEADERS = [
   "Task title",
   "link",
   "App",
-  "Staging test",
-  "Type",
   "Status",
   "Point",
   "Money",
@@ -22,21 +20,19 @@ export const COLUMN_INDEX = {
   title: 1,
   link: 2,
   app: 3,
-  stagingTest: 4,
-  type: 5,
-  status: 6,
-  point: 7,
-  money: 8,
-  assignees: 9,
-  followers: 10,
-  note: 11,
+  status: 4,
+  point: 5,
+  money: 6,
+  assignees: 7,
+  followers: 8,
+  note: 9,
 } as const;
 
-export const USER_OWNED_COLUMNS = [
-  COLUMN_INDEX.stagingTest,
-  COLUMN_INDEX.type,
-  COLUMN_INDEX.note,
-] as const;
+export const USER_OWNED_COLUMNS = [COLUMN_INDEX.note] as const;
+
+export function columnLetter(zeroBasedIndex: number): string {
+  return String.fromCharCode(65 + zeroBasedIndex);
+}
 
 // Notion Tag (first value) → Sheet "App" column value.
 // Notion names are spelled out; the sheet uses short codes.

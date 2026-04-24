@@ -8,6 +8,7 @@ import {
   SHEET_COLUMN_HEADERS,
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
+  columnLetter,
   isSyncableStatus,
   toSheetApp,
   toSheetStatus,
@@ -222,8 +223,9 @@ function buildMonthHeaderRow(
 
   const firstTaskRow = headerRowIndex + 1;
   const lastTaskRow = headerRowIndex + taskRowCount;
-  row[COLUMN_INDEX.point] = `=SUM(H${firstTaskRow}:H${lastTaskRow})`;
-  row[COLUMN_INDEX.money] = `=H${headerRowIndex}*${POINT_VALUE_VND}`;
+  const pointCol = columnLetter(COLUMN_INDEX.point);
+  row[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
+  row[COLUMN_INDEX.money] = `=${pointCol}${headerRowIndex}*${POINT_VALUE_VND}`;
   return row;
 }
 
