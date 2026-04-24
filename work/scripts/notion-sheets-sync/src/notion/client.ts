@@ -8,19 +8,32 @@ export interface NotionPage {
 const NOTION_PAGE_SIZE = 100;
 const ASSIGNEE_FIELD = "Assignee";
 
+export interface FetchPagesOptions {
+  createdOnOrAfter?: Date;
+}
+
 export async function fetchAllPages(
   notionApiKey: string,
   databaseId: string,
+  options: FetchPagesOptions = {},
 ): Promise<NotionPage[]> {
   const client = new Client({ auth: notionApiKey });
   const collected: NotionPage[] = [];
   let pageCursor: string | undefined = undefined;
+
+  const filter = options.createdOnOrAfter
+    ? {
+        timestamp: "created_time" as const,
+        created_time: { on_or_after: options.createdOnOrAfter.toISOString() },
+      }
+    : undefined;
 
   do {
     const response = await client.databases.query({
       database_id: databaseId,
       start_cursor: pageCursor,
       page_size: NOTION_PAGE_SIZE,
+      ...(filter ? { filter } : {}),
     });
 
     for (const result of response.results) {

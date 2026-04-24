@@ -6,6 +6,11 @@ import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab } from "./sync.ts";
 import { resolveTargetTabs, type TabEntry } from "./resolve-tabs.ts";
+import {
+  currentMonthLabel,
+  firstInstantOfMonth,
+  previousMonthLabel,
+} from "./util/month.ts";
 import { assignees, overrides } from "../tabs.config.ts";
 
 const ROOT_TOKEN_ENV_PATH = resolve(import.meta.dirname, "../../../../.token.env");
@@ -106,6 +111,19 @@ function validateMonthLabel(parsed: ParsedArguments, logger: Logger): boolean {
   return true;
 }
 
+// Earliest possible candidate-window start across every tab this run might sync.
+// - --month M/YYYY: target is fixed → window starts at 1/previousMonth(M/YYYY).
+// - default: target resolves to either currentMonth (window = 1/previous) or
+//   previousMonth (window = 1/monthBeforePrevious); take the wider of the two.
+function earliestCreatedFetchFloor(monthOverride: string | undefined, now: Date): Date {
+  if (monthOverride) {
+    return firstInstantOfMonth(previousMonthLabel(monthOverride));
+  }
+  const previous = previousMonthLabel(currentMonthLabel(now));
+  const twoMonthsBack = previousMonthLabel(previous);
+  return firstInstantOfMonth(twoMonthsBack);
+}
+
 async function main(): Promise<void> {
   const appConfig = loadConfig();
   const logger = createLogger({
@@ -122,9 +140,14 @@ async function main(): Promise<void> {
     logger.info(`Using explicit month override: ${parsed.monthLabel}`);
   }
 
-  logger.info(`Fetching all pages from Notion DB ${appConfig.notionDatabaseId}...`);
-  const allPages = await fetchAllPages(appConfig.notionApiKey, appConfig.notionDatabaseId);
-  logger.info(`Fetched ${allPages.length} total pages.`);
+  const createdOnOrAfter = earliestCreatedFetchFloor(parsed.monthLabel, new Date());
+  logger.info(
+    `Fetching pages from Notion DB ${appConfig.notionDatabaseId} created on or after ${createdOnOrAfter.toISOString()}...`,
+  );
+  const allPages = await fetchAllPages(appConfig.notionApiKey, appConfig.notionDatabaseId, {
+    createdOnOrAfter,
+  });
+  logger.info(`Fetched ${allPages.length} pages.`);
 
   const sheets = createSheetsClient(
     appConfig.googleServiceAccountKeyFile,
