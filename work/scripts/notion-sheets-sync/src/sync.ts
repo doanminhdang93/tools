@@ -3,7 +3,8 @@ import type { NotionPage } from "./notion/client.ts";
 import { filterByAssignee } from "./notion/client.ts";
 import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheets/parser.ts";
 import {
-  POINT_VALUE_VND,
+  pointRateForRole,
+  moneyFormulaForRole,
   SHEET_COLUMN_COUNT,
   SHEET_COLUMN_HEADERS,
   COLUMN_INDEX,
@@ -23,12 +24,15 @@ import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./n
 import {
   titleOf,
   statusOf,
-  firstTagNameOf,
-  sizeCardNumberOf,
+  tagNamesOf,
+  pointNumberOf,
   createdTimeOf,
   assigneeNamesOf,
   followerNamesOf,
+  type PointSource,
 } from "./notion/fields.ts";
+
+const DEV_ROLES = new Set(["developer", "sublead"]);
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {
@@ -39,6 +43,9 @@ export interface SyncTabArgs {
   logger: Logger;
   now?: Date;
   targetMonthOverride?: string;
+  pointSource?: PointSource;
+  role?: string;
+  roleByAssigneeName?: Map<string, string>;
 }
 
 export interface SyncTabResult {
@@ -59,7 +66,12 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     logger,
     now = new Date(),
     targetMonthOverride,
+    pointSource = "size_card",
+    role = "",
+    roleByAssigneeName,
   } = args;
+  const pointRate = pointRateForRole(role);
+  const isTester = role.trim().toLowerCase() === "tester";
 
   await sheets.writeRange(tabName, 1, [[...SHEET_COLUMN_HEADERS]]);
 
@@ -85,14 +97,15 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     windowStart,
     windowEnd,
     pageIdsInOtherSections,
+    isTester ? { mustHaveDevCoassignee: true, roleByAssigneeName: roleByAssigneeName ?? new Map() } : undefined,
   );
   candidatePages.sort(byCreatedTimeAscending);
 
-  logSyncedTasks(logger, tabName, candidatePages);
+  logSyncedTasks(logger, tabName, candidatePages, pointSource);
 
   const existingRowByPageId = indexTaskRowsByPageId(existingSection);
   const newTaskRows = candidatePages.map((page) =>
-    buildTaskRow(page, existingRowByPageId.get(normalizeNotionPageId(page.id))),
+    buildTaskRow(page, existingRowByPageId.get(normalizeNotionPageId(page.id)), pointSource),
   );
 
   const writeStartRow = existingSection
@@ -103,8 +116,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
     0,
   );
-  const totalMoney = totalPoints * POINT_VALUE_VND;
-  const headerRow = buildMonthHeaderRow(targetMonthLabel, writeStartRow, newTaskRows.length);
+  const totalMoney = totalPoints * pointRate;
+  const headerRow = buildMonthHeaderRow(targetMonthLabel, writeStartRow, newTaskRows.length, role);
 
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...newTaskRows]);
 
@@ -131,12 +144,18 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   };
 }
 
+interface TesterFilterOptions {
+  mustHaveDevCoassignee: true;
+  roleByAssigneeName: Map<string, string>;
+}
+
 function pagesInCandidateWindow(
   allPages: NotionPage[],
   assigneeName: string,
   windowStart: Date,
   windowEnd: Date,
   pageIdsAlreadyInOtherSections: Set<string>,
+  testerFilter?: TesterFilterOptions,
 ): NotionPage[] {
   const assignedPages = filterByAssignee(allPages, assigneeName);
   return assignedPages.filter((page) => {
@@ -151,8 +170,21 @@ function pagesInCandidateWindow(
     const normalizedPageId = normalizeNotionPageId(page.id);
     if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;
 
+    if (testerFilter) return passesTesterCoassigneeRule(page, assigneeName, testerFilter.roleByAssigneeName);
+
     return true;
   });
+}
+
+function passesTesterCoassigneeRule(
+  page: NotionPage,
+  testerName: string,
+  roleByAssigneeName: Map<string, string>,
+): boolean {
+  const assignees = assigneeNamesOf(page);
+  const others = assignees.filter((name) => name !== testerName);
+  if (others.length === 0) return true;
+  return others.some((name) => DEV_ROLES.has((roleByAssigneeName.get(name) ?? "").trim().toLowerCase()));
 }
 
 function collectPageIdsOutsideCurrentSection(
@@ -189,14 +221,14 @@ function indexTaskRowsByPageId(section: MonthSection | undefined): Map<string, s
   return indexed;
 }
 
-function buildTaskRow(page: NotionPage, existingRow: string[] | undefined): string[] {
+function buildTaskRow(page: NotionPage, existingRow: string[] | undefined, pointSource: PointSource): string[] {
   const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
   row[COLUMN_INDEX.month] = "";
   row[COLUMN_INDEX.title] = titleOf(page);
   row[COLUMN_INDEX.link] = buildNotionUrl(page.id);
-  row[COLUMN_INDEX.app] = toSheetApp(firstTagNameOf(page));
+  row[COLUMN_INDEX.app] = tagNamesOf(page).map(toSheetApp).join(", ");
   row[COLUMN_INDEX.status] = toSheetStatus(statusOf(page));
-  row[COLUMN_INDEX.point] = String(sizeCardNumberOf(page));
+  row[COLUMN_INDEX.point] = String(pointNumberOf(page, pointSource));
   row[COLUMN_INDEX.money] = "";
   row[COLUMN_INDEX.assignees] = assigneeNamesOf(page).join(", ");
   row[COLUMN_INDEX.followers] = followerNamesOf(page).join(", ");
@@ -211,6 +243,7 @@ function buildMonthHeaderRow(
   monthLabel: string,
   headerRowIndex: number,
   taskRowCount: number,
+  role: string,
 ): string[] {
   const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
   row[COLUMN_INDEX.month] = monthLabel;
@@ -225,7 +258,7 @@ function buildMonthHeaderRow(
   const lastTaskRow = headerRowIndex + taskRowCount;
   const pointCol = columnLetter(COLUMN_INDEX.point);
   row[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
-  row[COLUMN_INDEX.money] = `=${pointCol}${headerRowIndex}*${POINT_VALUE_VND}`;
+  row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowIndex);
   return row;
 }
 
@@ -265,7 +298,7 @@ function findFormatReferenceSection(
   return candidates[candidates.length - 1];
 }
 
-function logSyncedTasks(logger: Logger, tabName: string, pages: NotionPage[]): void {
+function logSyncedTasks(logger: Logger, tabName: string, pages: NotionPage[], pointSource: PointSource): void {
   if (pages.length === 0) {
     logger.info(`[${tabName}] no pages matched`);
     return;
@@ -274,7 +307,7 @@ function logSyncedTasks(logger: Logger, tabName: string, pages: NotionPage[]): v
   for (const page of pages) {
     const shortId = page.id.slice(0, 8);
     const createdIso = createdTimeOf(page);
-    const point = sizeCardNumberOf(page);
+    const point = pointNumberOf(page, pointSource);
     logger.info(
       `[${tabName}]   ${shortId} • ${point} pts • ${createdIso.slice(0, 10)} • ${titleOf(page)}`,
     );

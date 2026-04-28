@@ -14,11 +14,13 @@ export function statusOf(page: NotionPage): string {
   return statusValue?.name ?? "";
 }
 
-export function firstTagNameOf(page: NotionPage): string {
+export function tagNamesOf(page: NotionPage): string[] {
   const tagProperty = page.properties["Tag"];
-  if (!tagProperty || tagProperty.type !== "multi_select") return "";
+  if (!tagProperty || tagProperty.type !== "multi_select") return [];
   const tags = (tagProperty as { multi_select?: { name?: string }[] }).multi_select ?? [];
-  return tags[0]?.name ?? "";
+  return tags
+    .map((tag) => (tag.name ?? "").trim())
+    .filter((name) => name.length > 0);
 }
 
 export function sizeCardNumberOf(page: NotionPage): number {
@@ -28,6 +30,21 @@ export function sizeCardNumberOf(page: NotionPage): number {
   if (!sizeCard?.name) return 0;
   const asNumber = Number(sizeCard.name);
   return Number.isFinite(asNumber) ? asNumber : 0;
+}
+
+export function storyPointNumberOf(page: NotionPage): number {
+  const storyPointProperty = page.properties["Story Point"];
+  if (!storyPointProperty || storyPointProperty.type !== "select") return 0;
+  const storyPoint = (storyPointProperty as { select?: { name?: string } | null }).select;
+  if (!storyPoint?.name) return 0;
+  const asNumber = Number(storyPoint.name);
+  return Number.isFinite(asNumber) ? asNumber : 0;
+}
+
+export type PointSource = "size_card" | "story_point";
+
+export function pointNumberOf(page: NotionPage, source: PointSource): number {
+  return source === "story_point" ? storyPointNumberOf(page) : sizeCardNumberOf(page);
 }
 
 export function createdTimeOf(page: NotionPage): string {

@@ -10,6 +10,8 @@ export interface SheetsClient {
   clearRows(tabName: string, startRow: number, endRow: number): Promise<void>;
   applySectionStyle(tabName: string, plan: SectionStylePlan): Promise<void>;
   listTabNames(): Promise<string[]>;
+  rawApi: sheets_v4.Sheets;
+  spreadsheetId: string;
 }
 
 export interface RgbColor {
@@ -50,6 +52,8 @@ export function createSheetsClient(
     applySectionStyle: (tabName, plan) =>
       applySectionStyle(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, plan),
     listTabNames: () => listTabNames(sheetsApi, spreadsheetId),
+    rawApi: sheetsApi,
+    spreadsheetId,
   };
 }
 

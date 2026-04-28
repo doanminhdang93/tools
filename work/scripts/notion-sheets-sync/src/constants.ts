@@ -1,5 +1,21 @@
 export const POINT_VALUE_VND = 45_000;
 
+export const TESTER_POINT_RATIO = 0.3;
+
+export function pointRateForRole(role: string): number {
+  const normalizedRole = role.trim().toLowerCase();
+  if (normalizedRole === "po" || normalizedRole === "designer") return 22_000;
+  return 45_000;
+}
+
+export function moneyFormulaForRole(role: string, pointCol: string, headerRowOneBased: number): string {
+  const pointRate = pointRateForRole(role);
+  const isTester = role.trim().toLowerCase() === "tester";
+  return isTester
+    ? `=${pointCol}${headerRowOneBased}*${TESTER_POINT_RATIO}*${pointRate}`
+    : `=${pointCol}${headerRowOneBased}*${pointRate}`;
+}
+
 export const SHEET_COLUMN_HEADERS = [
   "Month & Stt",
   "Task title",

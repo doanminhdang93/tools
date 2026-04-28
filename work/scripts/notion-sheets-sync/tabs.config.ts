@@ -20,5 +20,8 @@ export const assignees: string[] = [
 // sheet tab is titled differently from what the rule would produce).
 // Key = the exact Notion display name; value = the sheet tab name to use.
 export const overrides: Record<string, string> = {
-  // "Some Notion Name": "CustomTabName",
+  "Trọng Hiếu Nguyễn": "HieuNT",
+  "Tuấn Dương Nguyễn": "DuongNT",
+  "Bách Nguyễn Hiền": "BachNH",
+  "Tuấn Vũ": "TuanVM",
 };

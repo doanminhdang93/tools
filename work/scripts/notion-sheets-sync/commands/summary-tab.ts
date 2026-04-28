@@ -4,11 +4,12 @@ import { readFileSync } from "node:fs";
 import { google, sheets_v4 } from "googleapis";
 import { loadConfig } from "../src/config.ts";
 import { parseTab } from "../src/sheets/parser.ts";
-import { POINT_VALUE_VND, COLUMN_INDEX, columnLetter } from "../src/constants.ts";
+import { COLUMN_INDEX, columnLetter } from "../src/constants.ts";
+import { readMembers } from "../src/util/members.ts";
 
 loadDotenv({ path: resolve(import.meta.dirname, "../../../../.token.env") });
 
-const MEMBER_TABS = ["ChienNH", "CuongLT", "DangDM", "HieuNM", "HuyKT", "NhatNT"];
+let MEMBER_TABS: string[] = [];
 const DEFAULT_MEMBER = "DangDM";
 const SUMMARY_TAB = "Summary";
 
@@ -57,6 +58,10 @@ async function main() {
   });
   const sheetsApi = google.sheets({ version: "v4", auth: googleAuth });
   const spreadsheetId = appConfig.googleSheetsId;
+
+  const members = await readMembers();
+  MEMBER_TABS = members.map((member) => member.tabName);
+  console.log(`Loaded ${MEMBER_TABS.length} members from Members tab.`);
 
   const { unionLabels, maxPerMember } = await collectAllMonthLabels(sheetsApi, spreadsheetId);
   console.log(
@@ -243,8 +248,10 @@ async function writeSummaryContent(
 ): Promise<void> {
   const selectedMember = preservedMember ?? DEFAULT_MEMBER;
   const pointCol = columnLetter(COLUMN_INDEX.point);
+  const moneyCol = columnLetter(COLUMN_INDEX.money);
   const memberRef = `INDIRECT("'"&$C$2&"'!A:A")`;
   const pointColRef = `INDIRECT("'"&$C$2&"'!${pointCol}:${pointCol}")`;
+  const moneyColRef = `INDIRECT("'"&$C$2&"'!${moneyCol}:${moneyCol}")`;
   const dataEndRow = FIRST_MONTH_ROW + Math.max(capacityRows, 1) - 1;
 
   const monthSpillFormula =
@@ -255,8 +262,9 @@ async function writeSummaryContent(
     `IFERROR(VLOOKUP(B${FIRST_MONTH_ROW}:B${dataEndRow},` +
     `{${memberRef},${pointColRef}},2,FALSE),0)))`;
   const moneySpillFormula =
-    `=ARRAYFORMULA(IF(C${FIRST_MONTH_ROW}:C${dataEndRow}="","",` +
-    `C${FIRST_MONTH_ROW}:C${dataEndRow}*${POINT_VALUE_VND}))`;
+    `=ARRAYFORMULA(IF(B${FIRST_MONTH_ROW}:B${dataEndRow}="","",` +
+    `IFERROR(VLOOKUP(B${FIRST_MONTH_ROW}:B${dataEndRow},` +
+    `{${memberRef},${moneyColRef}},2,FALSE),0)))`;
 
   const updates: sheets_v4.Schema$ValueRange[] = [
     { range: `${SUMMARY_TAB}!B${TITLE_ROW}`, values: [["Monthly Summary"]] },
@@ -270,7 +278,7 @@ async function writeSummaryContent(
         [
           "Total",
           `=SUM(C${FIRST_MONTH_ROW}:C${dataEndRow})`,
-          `=C${TOTAL_ROW}*${POINT_VALUE_VND}`,
+          `=SUM(D${FIRST_MONTH_ROW}:D${dataEndRow})`,
         ],
       ],
     },
