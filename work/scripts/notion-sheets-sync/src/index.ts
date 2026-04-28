@@ -1,5 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
+import { Client as NotionClient } from "@notionhq/client";
 import { loadConfig } from "./config.ts";
 import { fetchAllPages } from "./notion/client.ts";
 import { createSheetsClient } from "./sheets/client.ts";
@@ -146,6 +147,7 @@ async function main(): Promise<void> {
   logger.info(`Fetched ${allPages.length} pages.`);
 
   const sheets = createSheetsClient(appConfig.googleServiceAccountKeyFile, appConfig.googleSheetsId);
+  const notionClient = new NotionClient({ auth: appConfig.notionApiKey });
   const monthLabel = parsed.monthLabel ?? currentMonthLabel(new Date());
 
   const failures: string[] = [];
@@ -178,6 +180,7 @@ async function main(): Promise<void> {
         targetMonthOverride: parsed.monthLabel,
         pointSource,
         role: member.role,
+        notionClient,
       });
     } catch (cause) {
       const message = `Tab "${member.tabName}" failed: ${(cause as Error).message}`;

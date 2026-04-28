@@ -1,5 +1,6 @@
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
+import { Client as NotionClient } from "@notionhq/client";
 import { loadConfig } from "../src/config.ts";
 import { fetchAllPages } from "../src/notion/client.ts";
 import { syncTab } from "../src/sync.ts";
@@ -54,6 +55,7 @@ async function main() {
   logger.info(`Fetched ${allPages.length} pages.`);
 
   const sheets = createSheetsClient(appConfig.googleServiceAccountKeyFile, appConfig.googleSheetsId);
+  const notionClient = new NotionClient({ auth: appConfig.notionApiKey });
   await syncTab({
     tabName: TAB,
     assigneeName: notionName,
@@ -64,6 +66,7 @@ async function main() {
     windowEndOverride: windowEnd,
     pointSource,
     role,
+    notionClient,
   });
 }
 
