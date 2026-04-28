@@ -24,19 +24,17 @@ const TESTER_ROLE = "tester";
 interface ParsedArguments {
   tabName?: string;
   syncAll: boolean;
-  cronMode: boolean;
   monthLabel?: string;
   role?: string;
 }
 
 function parseCliArguments(argv: string[]): ParsedArguments {
   const args = argv.slice(2);
-  const parsed: ParsedArguments = { syncAll: false, cronMode: false };
+  const parsed: ParsedArguments = { syncAll: false };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--all") { parsed.syncAll = true; continue; }
-    if (arg === "--cron") { parsed.cronMode = true; continue; }
     if (arg === "--tab") { parsed.tabName = args[++i]; continue; }
     if (arg === "--month") { parsed.monthLabel = args[++i]; continue; }
     if (arg === "--role") { parsed.role = args[++i]; continue; }
@@ -45,17 +43,6 @@ function parseCliArguments(argv: string[]): ParsedArguments {
   }
 
   return parsed;
-}
-
-function applyCronDefault(parsed: ParsedArguments, syncCronTab: string | undefined): void {
-  if (!parsed.cronMode) return;
-  if (parsed.syncAll || parsed.tabName || parsed.role) return;
-  const trimmed = syncCronTab?.trim();
-  if (!trimmed || trimmed.toLowerCase() === "all") {
-    parsed.syncAll = true;
-    return;
-  }
-  parsed.tabName = trimmed;
 }
 
 function validateMonthLabel(parsed: ParsedArguments, logger: Logger): boolean {
@@ -124,7 +111,6 @@ async function main(): Promise<void> {
   });
 
   const parsed = parseCliArguments(process.argv);
-  applyCronDefault(parsed, appConfig.syncCronTab);
   if (!validateMonthLabel(parsed, logger)) process.exit(2);
   if (parsed.monthLabel) logger.info(`Month override: ${parsed.monthLabel}`);
 

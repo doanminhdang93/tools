@@ -12,7 +12,6 @@ const MANAGED_KEYS = [
   ...Object.keys(REQUIRED_ENV),
   "SLACK_BOT_TOKEN",
   "NOTIFY_ON_ERROR_CHANNEL",
-  "SYNC_CRON_TAB",
 ];
 
 describe("loadConfig", () => {
@@ -47,7 +46,6 @@ describe("loadConfig", () => {
     expect(config.googleServiceAccountKeyFile).toBe("./service-account.json");
     expect(config.slackBotToken).toBeUndefined();
     expect(config.notifyOnErrorChannel).toBeUndefined();
-    expect(config.syncCronTab).toBeUndefined();
   });
 
   it("throws when NOTION_API_KEY is missing", () => {
@@ -78,11 +76,4 @@ describe("loadConfig", () => {
     expect(config.notifyOnErrorChannel).toBe("#alerts");
   });
 
-  it("exposes SYNC_CRON_TAB when set, and treats empty as undefined", () => {
-    Object.assign(process.env, REQUIRED_ENV, { SYNC_CRON_TAB: "DangDM" });
-    expect(loadConfig().syncCronTab).toBe("DangDM");
-
-    process.env.SYNC_CRON_TAB = "";
-    expect(loadConfig().syncCronTab).toBeUndefined();
-  });
 });
