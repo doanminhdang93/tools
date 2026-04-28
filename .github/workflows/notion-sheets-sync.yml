@@ -1,0 +1,65 @@
+name: Notion Sheets Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      tab:
+        description: Member tab name (leave empty to sync all)
+        required: false
+        type: string
+      month:
+        description: Target month M/YYYY (leave empty for current month)
+        required: false
+        type: string
+
+concurrency:
+  group: notion-sheets-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: work/scripts/notion-sheets-sync
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: work/scripts/notion-sheets-sync/package-lock.json
+
+      - run: npm ci
+
+      - name: Materialize Google service account JSON
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY_JSON }}
+        run: |
+          mkdir -p .secrets
+          printf '%s' "$SERVICE_ACCOUNT_JSON" > .secrets/service-account.json
+
+      - name: Run sync
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          GOOGLE_SERVICE_ACCOUNT_KEY_FILE: .secrets/service-account.json
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          NOTIFY_ON_ERROR_CHANNEL: ${{ secrets.NOTIFY_ON_ERROR_CHANNEL }}
+          INPUT_TAB: ${{ inputs.tab }}
+          INPUT_MONTH: ${{ inputs.month }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "$INPUT_TAB" ]; then
+            args+=(--tab "$INPUT_TAB")
+          else
+            args+=(--all)
+          fi
+          if [ -n "$INPUT_MONTH" ]; then
+            args+=(--month "$INPUT_MONTH")
+          fi
+          echo "Running: npm run sync -- ${args[*]}"
+          npm run sync -- "${args[@]}"
