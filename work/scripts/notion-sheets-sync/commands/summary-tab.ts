@@ -39,6 +39,15 @@ const COL_MONTH = 1;
 const COL_POINT = 2;
 const COL_MONEY = 3;
 
+// Rank table: G H I J (cols 6..9), helper cells hidden in L M N (cols 11..13)
+const COL_RANK_NUMBER = 6;
+const COL_RANK_MEMBER = 7;
+const COL_RANK_POINT = 8;
+const COL_RANK_MONEY = 9;
+const COL_RANK_HELPER_TAB = 11;
+const COL_RANK_HELPER_POINT = 12;
+const COL_RANK_HELPER_MONEY = 13;
+
 const TITLE_ROW = 1;
 const MEMBER_ROW = 2;
 const SORT_ROW = 3;
@@ -49,6 +58,8 @@ const FIRST_MONTH_ROW = 7;
 const LAST_MONTH_ROW = 200;
 const SORT_DESC_LABEL = "Newest first";
 const SORT_ASC_LABEL = "Oldest first";
+const RANK_SORT_POINT_LABEL = "Point";
+const RANK_SORT_MONEY_LABEL = "Money";
 
 async function main() {
   const appConfig = loadConfig();
@@ -71,16 +82,16 @@ async function main() {
   await removeSummaryFromDangDM(sheetsApi, spreadsheetId);
   console.log(`✔ removed existing summary block from DangDM`);
 
-  const { sheetId: summarySheetId, preservedMember } = await ensureSummaryTab(
+  const { sheetId: summarySheetId, preservedMember, preservedRankSort } = await ensureSummaryTab(
     sheetsApi,
     spreadsheetId,
   );
   console.log(
-    `✔ Summary tab ready (sheetId=${summarySheetId}, preserved member=${preservedMember ?? "none"})`,
+    `✔ Summary tab ready (sheetId=${summarySheetId}, preserved member=${preservedMember ?? "none"}, preserved rank sort=${preservedRankSort ?? RANK_SORT_POINT_LABEL})`,
   );
 
-  await writeSummaryContent(sheetsApi, spreadsheetId, maxPerMember, preservedMember);
-  console.log(`✔ wrote summary content (capacity ${maxPerMember} rows)`);
+  await writeSummaryContent(sheetsApi, spreadsheetId, maxPerMember, preservedMember, preservedRankSort);
+  console.log(`✔ wrote summary content (capacity ${maxPerMember} rows, ${MEMBER_TABS.length} ranked members)`);
 
   await applySummaryFormatting(sheetsApi, spreadsheetId, summarySheetId, maxPerMember);
   console.log(`✔ applied formatting`);
@@ -171,20 +182,38 @@ async function removeSummaryFromDangDM(
 async function ensureSummaryTab(
   sheetsApi: sheets_v4.Sheets,
   spreadsheetId: string,
-): Promise<{ sheetId: number; preservedMember: string | null }> {
+): Promise<{ sheetId: number; preservedMember: string | null; preservedRankSort: string | null }> {
   const workbook = await sheetsApi.spreadsheets.get({ spreadsheetId });
   const existing = workbook.data.sheets?.find(
     (sheet) => sheet.properties?.title === SUMMARY_TAB,
   );
   if (existing?.properties?.sheetId !== undefined && existing.properties.sheetId !== null) {
     const sheetId = existing.properties.sheetId;
+    const currentColumnCount = existing.properties.gridProperties?.columnCount ?? 10;
+    const requiredColumnCount = COL_RANK_HELPER_MONEY + 1;
+    if (currentColumnCount < requiredColumnCount) {
+      await sheetsApi.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [{
+            appendDimension: {
+              sheetId,
+              dimension: "COLUMNS",
+              length: requiredColumnCount - currentColumnCount,
+            },
+          }],
+        },
+      });
+    }
 
     const selectorResponse = await sheetsApi.spreadsheets.values.get({
       spreadsheetId,
-      range: `${SUMMARY_TAB}!C2`,
+      range: `${SUMMARY_TAB}!C2:H3`,
     });
-    const currentSelection = (selectorResponse.data.values?.[0]?.[0] ?? "").toString().trim();
-    const preservedMember = MEMBER_TABS.includes(currentSelection) ? currentSelection : null;
+    const memberSelection = (selectorResponse.data.values?.[0]?.[0] ?? "").toString().trim();
+    const preservedMember = MEMBER_TABS.includes(memberSelection) ? memberSelection : null;
+    const rankSortRaw = (selectorResponse.data.values?.[1]?.[5] ?? "").toString().trim();
+    const preservedRankSort = rankSortRaw === RANK_SORT_MONEY_LABEL ? RANK_SORT_MONEY_LABEL : null;
 
     await sheetsApi.spreadsheets.values.clear({
       spreadsheetId,
@@ -214,7 +243,7 @@ async function ensureSummaryTab(
         ],
       },
     });
-    return { sheetId, preservedMember };
+    return { sheetId, preservedMember, preservedRankSort };
   }
 
   const response = await sheetsApi.spreadsheets.batchUpdate({
@@ -225,7 +254,7 @@ async function ensureSummaryTab(
           addSheet: {
             properties: {
               title: SUMMARY_TAB,
-              gridProperties: { rowCount: 200, columnCount: 10, frozenRowCount: 4 },
+              gridProperties: { rowCount: 200, columnCount: 14, frozenRowCount: 4 },
               index: 0,
             },
           },
@@ -237,7 +266,7 @@ async function ensureSummaryTab(
   if (addedSheetId === undefined || addedSheetId === null) {
     throw new Error(`Failed to create "${SUMMARY_TAB}" tab`);
   }
-  return { sheetId: addedSheetId, preservedMember: null };
+  return { sheetId: addedSheetId, preservedMember: null, preservedRankSort: null };
 }
 
 async function writeSummaryContent(
@@ -245,8 +274,10 @@ async function writeSummaryContent(
   spreadsheetId: string,
   capacityRows: number,
   preservedMember: string | null,
+  preservedRankSort: string | null,
 ): Promise<void> {
   const selectedMember = preservedMember ?? DEFAULT_MEMBER;
+  const selectedRankSort = preservedRankSort ?? RANK_SORT_POINT_LABEL;
   const pointCol = columnLetter(COLUMN_INDEX.point);
   const moneyCol = columnLetter(COLUMN_INDEX.money);
   const memberRef = `INDIRECT("'"&$C$2&"'!A:A")`;
@@ -288,6 +319,9 @@ async function writeSummaryContent(
     { range: `${SUMMARY_TAB}!D${FIRST_MONTH_ROW}`, values: [[moneySpillFormula]] },
   ];
 
+  const rankUpdates = buildRankUpdates(selectedRankSort);
+  updates.push(...rankUpdates);
+
   await sheetsApi.spreadsheets.values.batchUpdate({
     spreadsheetId,
     requestBody: {
@@ -295,6 +329,56 @@ async function writeSummaryContent(
       data: updates,
     },
   });
+}
+
+function buildRankUpdates(selectedRankSort: string): sheets_v4.Schema$ValueRange[] {
+  const memberPointCol = columnLetter(COLUMN_INDEX.point);
+  const memberMoneyCol = columnLetter(COLUMN_INDEX.money);
+  const rankNumberCol = columnLetter(COL_RANK_NUMBER);
+  const rankMemberCol = columnLetter(COL_RANK_MEMBER);
+  const rankPointCol = columnLetter(COL_RANK_POINT);
+  const rankMoneyCol = columnLetter(COL_RANK_MONEY);
+  const helperTabCol = columnLetter(COL_RANK_HELPER_TAB);
+  const helperPointCol = columnLetter(COL_RANK_HELPER_POINT);
+  const helperMoneyCol = columnLetter(COL_RANK_HELPER_MONEY);
+
+  const rankFirstRow = FIRST_MONTH_ROW;
+  const rankLastRow = rankFirstRow + MEMBER_TABS.length - 1;
+
+  const helperRows = MEMBER_TABS.map((tabName) => [
+    tabName,
+    `=SUMIF('${tabName}'!A:A, "<>", '${tabName}'!${memberPointCol}:${memberPointCol})`,
+    `=SUMIF('${tabName}'!A:A, "<>", '${tabName}'!${memberMoneyCol}:${memberMoneyCol})`,
+  ]);
+
+  const sortColumnExpression = `IF($${rankMemberCol}$${SORT_ROW}=${JSON.stringify(RANK_SORT_MONEY_LABEL)},3,2)`;
+  const sortRangeExpression = `${helperTabCol}${rankFirstRow}:${helperMoneyCol}${rankLastRow}`;
+  const sortSpillFormula = `=IFERROR(SORT(${sortRangeExpression},${sortColumnExpression},FALSE),"")`;
+  const rankNumberSpillFormula =
+    `=ARRAYFORMULA(IF(${rankMemberCol}${rankFirstRow}:${rankMemberCol}${rankLastRow}="","",` +
+    `ROW(${rankMemberCol}${rankFirstRow}:${rankMemberCol}${rankLastRow})-${rankFirstRow - 1}))`;
+  const totalPointFormula = `=SUM(${rankPointCol}${rankFirstRow}:${rankPointCol}${rankLastRow})`;
+  const totalMoneyFormula = `=SUM(${rankMoneyCol}${rankFirstRow}:${rankMoneyCol}${rankLastRow})`;
+
+  return [
+    { range: `${SUMMARY_TAB}!${rankNumberCol}${TITLE_ROW}`, values: [["Member Ranking"]] },
+    { range: `${SUMMARY_TAB}!${rankNumberCol}${SORT_ROW}`, values: [["Sort by"]] },
+    { range: `${SUMMARY_TAB}!${rankMemberCol}${SORT_ROW}`, values: [[selectedRankSort]] },
+    {
+      range: `${SUMMARY_TAB}!${rankNumberCol}${TOTAL_ROW}:${rankMoneyCol}${TOTAL_ROW}`,
+      values: [["Total", `=COUNTA(${rankMemberCol}${rankFirstRow}:${rankMemberCol}${rankLastRow})`, totalPointFormula, totalMoneyFormula]],
+    },
+    {
+      range: `${SUMMARY_TAB}!${rankNumberCol}${HEADER_ROW}:${rankMoneyCol}${HEADER_ROW}`,
+      values: [["Rank", "Member", "Point", "Money"]],
+    },
+    {
+      range: `${SUMMARY_TAB}!${helperTabCol}${rankFirstRow}:${helperMoneyCol}${rankLastRow}`,
+      values: helperRows,
+    },
+    { range: `${SUMMARY_TAB}!${rankNumberCol}${rankFirstRow}`, values: [[rankNumberSpillFormula]] },
+    { range: `${SUMMARY_TAB}!${rankMemberCol}${rankFirstRow}`, values: [[sortSpillFormula]] },
+  ];
 }
 
 async function applySummaryFormatting(
@@ -528,10 +612,153 @@ async function applySummaryFormatting(
     },
   });
 
+  requests.push(...buildRankFormattingRequests(sheetId));
+
   await sheetsApi.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: { requests },
   });
+}
+
+function buildRankFormattingRequests(sheetId: number): sheets_v4.Schema$Request[] {
+  const requests: sheets_v4.Schema$Request[] = [];
+  const rankFirstRow = FIRST_MONTH_ROW;
+  const rankLastRow = Math.max(rankFirstRow + MEMBER_TABS.length - 1, rankFirstRow);
+
+  requests.push(
+    fillPage(sheetId, 1, LAST_MONTH_ROW + 5, COL_RANK_NUMBER, COL_RANK_MONEY + 1, WHITE_FILL),
+    mergeRange(sheetId, TITLE_ROW, TITLE_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1),
+    styleRange(sheetId, TITLE_ROW, TITLE_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1, {
+      backgroundColor: TITLE_FILL,
+      textFormat: {
+        bold: true,
+        fontSize: 18,
+        foregroundColor: HEADER_TEXT,
+        fontFamily: "Google Sans",
+      },
+      horizontalAlignment: "CENTER",
+      verticalAlignment: "MIDDLE",
+      padding: { top: 8, bottom: 8, left: 8, right: 8 },
+    }),
+    styleRange(sheetId, SORT_ROW, SORT_ROW, COL_RANK_NUMBER, COL_RANK_NUMBER + 1, {
+      backgroundColor: SELECTOR_FILL,
+      textFormat: { bold: true, fontSize: 11, foregroundColor: SUBTLE_TEXT },
+      horizontalAlignment: "RIGHT",
+      verticalAlignment: "MIDDLE",
+      padding: { right: 10 },
+    }),
+    mergeRange(sheetId, SORT_ROW, SORT_ROW, COL_RANK_MEMBER, COL_RANK_MONEY + 1),
+    styleRange(sheetId, SORT_ROW, SORT_ROW, COL_RANK_MEMBER, COL_RANK_MONEY + 1, {
+      backgroundColor: SELECTOR_VALUE_FILL,
+      textFormat: { bold: true, fontSize: 12, foregroundColor: SUBTLE_TEXT },
+      horizontalAlignment: "CENTER",
+      verticalAlignment: "MIDDLE",
+      borders: {
+        top: BORDER_LIGHT,
+        bottom: BORDER_LIGHT,
+        left: BORDER_LIGHT,
+        right: BORDER_LIGHT,
+      },
+    }),
+    {
+      setDataValidation: {
+        range: gridRange(sheetId, SORT_ROW, SORT_ROW, COL_RANK_MEMBER, COL_RANK_MONEY + 1),
+        rule: {
+          condition: {
+            type: "ONE_OF_LIST",
+            values: [RANK_SORT_POINT_LABEL, RANK_SORT_MONEY_LABEL].map((label) => ({
+              userEnteredValue: label,
+            })),
+          },
+          strict: true,
+          showCustomUi: true,
+        },
+      },
+    },
+    styleRange(sheetId, TOTAL_ROW, TOTAL_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1, {
+      backgroundColor: TOTAL_FILL,
+      textFormat: { bold: true, fontSize: 13, foregroundColor: SUBTLE_TEXT },
+      verticalAlignment: "MIDDLE",
+    }),
+    styleRange(sheetId, TOTAL_ROW, TOTAL_ROW, COL_RANK_NUMBER, COL_RANK_MEMBER + 1, {
+      horizontalAlignment: "CENTER",
+    }),
+    styleRange(sheetId, TOTAL_ROW, TOTAL_ROW, COL_RANK_POINT, COL_RANK_MONEY + 1, {
+      horizontalAlignment: "RIGHT",
+      padding: { right: 12 },
+    }),
+    numberFormatRange(sheetId, TOTAL_ROW, TOTAL_ROW, COL_RANK_POINT, COL_RANK_POINT + 1, "#,##0"),
+    numberFormatRange(sheetId, TOTAL_ROW, TOTAL_ROW, COL_RANK_MONEY, COL_RANK_MONEY + 1, `#,##0" ₫"`),
+    styleRange(sheetId, HEADER_ROW, HEADER_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1, {
+      backgroundColor: HEADER_FILL,
+      textFormat: { bold: true, fontSize: 11, foregroundColor: HEADER_TEXT },
+      horizontalAlignment: "CENTER",
+      verticalAlignment: "MIDDLE",
+    }),
+    styleRange(sheetId, rankFirstRow, rankLastRow, COL_RANK_NUMBER, COL_RANK_MONEY + 1, {
+      backgroundColor: WHITE_FILL,
+      textFormat: { fontSize: 11 },
+      verticalAlignment: "MIDDLE",
+    }),
+    styleRange(sheetId, rankFirstRow, rankLastRow, COL_RANK_NUMBER, COL_RANK_MEMBER + 1, {
+      horizontalAlignment: "CENTER",
+    }),
+    styleRange(sheetId, rankFirstRow, rankLastRow, COL_RANK_POINT, COL_RANK_MONEY + 1, {
+      horizontalAlignment: "RIGHT",
+      padding: { right: 12 },
+    }),
+    numberFormatRange(sheetId, rankFirstRow, rankLastRow, COL_RANK_POINT, COL_RANK_POINT + 1, "#,##0"),
+    numberFormatRange(sheetId, rankFirstRow, rankLastRow, COL_RANK_MONEY, COL_RANK_MONEY + 1, `#,##0" ₫"`),
+    {
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [gridRange(sheetId, rankFirstRow, rankLastRow, COL_RANK_NUMBER, COL_RANK_MONEY + 1)],
+          booleanRule: {
+            condition: {
+              type: "CUSTOM_FORMULA",
+              values: [{ userEnteredValue: `=AND($H${rankFirstRow}<>"",ISEVEN(ROW()))` }],
+            },
+            format: { backgroundColor: STRIPE_FILL },
+          },
+        },
+        index: 0,
+      },
+    },
+    {
+      updateBorders: {
+        range: gridRange(sheetId, HEADER_ROW, HEADER_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1),
+        bottom: BORDER_STRONG,
+      },
+    },
+    {
+      updateBorders: {
+        range: gridRange(sheetId, TOTAL_ROW, TOTAL_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1),
+        top: BORDER_STRONG,
+        bottom: BORDER_STRONG,
+        left: BORDER_STRONG,
+        right: BORDER_STRONG,
+      },
+    },
+    setColumnWidth(sheetId, COL_RANK_NUMBER - 1, 24),
+    setColumnWidth(sheetId, COL_RANK_NUMBER, 60),
+    setColumnWidth(sheetId, COL_RANK_MEMBER, 140),
+    setColumnWidth(sheetId, COL_RANK_POINT, 100),
+    setColumnWidth(sheetId, COL_RANK_MONEY, 140),
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId,
+          dimension: "COLUMNS",
+          startIndex: COL_RANK_HELPER_TAB,
+          endIndex: COL_RANK_HELPER_MONEY + 1,
+        },
+        properties: { hiddenByUser: true },
+        fields: "hiddenByUser",
+      },
+    },
+  );
+
+  return requests;
 }
 
 function styleRange(

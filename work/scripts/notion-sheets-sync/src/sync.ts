@@ -40,6 +40,7 @@ export interface SyncTabArgs {
   targetMonthOverride?: string;
   pointSource?: PointSource;
   role?: string;
+  windowEndOverride?: Date;
 }
 
 export interface SyncTabResult {
@@ -62,6 +63,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     targetMonthOverride,
     pointSource = "size_card",
     role = "",
+    windowEndOverride,
   } = args;
   const pointRate = pointRateForRole(role);
 
@@ -75,7 +77,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     targetMonthOverride ?? resolveTargetMonthLabel(parsed, columnABackgrounds, now);
 
   const windowStart = kpiWindowStart(targetMonthLabel);
-  const windowEnd = targetMonthOverride ? lastInstantOfMonth(targetMonthLabel) : now;
+  const defaultWindowEnd = targetMonthOverride ? lastInstantOfMonth(targetMonthLabel) : now;
+  const windowEnd = windowEndOverride ?? defaultWindowEnd;
 
   logger.info(
     `[${tabName}] syncing ${targetMonthLabel} (window ${windowStart.toISOString()} → ${windowEnd.toISOString()}) for ${assigneeName}`,
