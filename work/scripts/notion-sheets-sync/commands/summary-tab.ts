@@ -90,11 +90,18 @@ async function main() {
     `✔ Summary tab ready (sheetId=${summarySheetId}, preserved member=${preservedMember ?? "none"}, preserved rank sort=${preservedRankSort ?? RANK_SORT_POINT_LABEL})`,
   );
 
-  await writeSummaryContent(sheetsApi, spreadsheetId, maxPerMember, preservedMember, preservedRankSort);
+  await writeSummaryContent(
+    sheetsApi,
+    spreadsheetId,
+    maxPerMember,
+    preservedMember,
+    preservedRankSort,
+    appConfig.workerUrl,
+  );
   console.log(`✔ wrote summary content (capacity ${maxPerMember} rows, ${MEMBER_TABS.length} ranked members)`);
 
-  await applySummaryFormatting(sheetsApi, spreadsheetId, summarySheetId, maxPerMember);
-  console.log(`✔ applied formatting`);
+  await applySummaryFormatting(sheetsApi, spreadsheetId, summarySheetId, maxPerMember, appConfig.workerUrl);
+  console.log(`✔ applied formatting${appConfig.workerUrl ? " (with sync buttons)" : " (WORKER_URL unset — no sync buttons)"}`);
 
   console.log("\nAll done.");
 }
@@ -275,6 +282,7 @@ async function writeSummaryContent(
   capacityRows: number,
   preservedMember: string | null,
   preservedRankSort: string | null,
+  workerUrl: string | undefined,
 ): Promise<void> {
   const selectedMember = preservedMember ?? DEFAULT_MEMBER;
   const selectedRankSort = preservedRankSort ?? RANK_SORT_POINT_LABEL;
@@ -322,6 +330,10 @@ async function writeSummaryContent(
   const rankUpdates = buildRankUpdates(selectedRankSort);
   updates.push(...rankUpdates);
 
+  if (workerUrl) {
+    updates.push(...buildSyncButtonUpdates(workerUrl));
+  }
+
   await sheetsApi.spreadsheets.values.batchUpdate({
     spreadsheetId,
     requestBody: {
@@ -329,6 +341,19 @@ async function writeSummaryContent(
       data: updates,
     },
   });
+}
+
+function buildSyncButtonUpdates(workerUrl: string): sheets_v4.Schema$ValueRange[] {
+  const memberSelectorRef = `$C$${MEMBER_ROW}`;
+  const escapedWorkerUrl = JSON.stringify(workerUrl);
+  const memberFormula =
+    `=HYPERLINK(${escapedWorkerUrl}&"/?recent3=1&tab="&${memberSelectorRef},` +
+    `"🔄 Sync "&${memberSelectorRef}&" (3 months)")`;
+  const allFormula = `=HYPERLINK(${escapedWorkerUrl}&"/?recent3=1","🔄 Sync ALL (3 months)")`;
+  return [
+    { range: `${SUMMARY_TAB}!B${SPACER_ROW}`, values: [[memberFormula]] },
+    { range: `${SUMMARY_TAB}!G${SPACER_ROW}`, values: [[allFormula]] },
+  ];
 }
 
 function buildRankUpdates(selectedRankSort: string): sheets_v4.Schema$ValueRange[] {
@@ -386,6 +411,7 @@ async function applySummaryFormatting(
   spreadsheetId: string,
   sheetId: number,
   monthCount: number,
+  workerUrl: string | undefined,
 ): Promise<void> {
   const requests: sheets_v4.Schema$Request[] = [];
 
@@ -614,10 +640,36 @@ async function applySummaryFormatting(
 
   requests.push(...buildRankFormattingRequests(sheetId));
 
+  if (workerUrl) {
+    requests.push(...buildSyncButtonFormattingRequests(sheetId));
+  }
+
   await sheetsApi.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: { requests },
   });
+}
+
+function buildSyncButtonFormattingRequests(sheetId: number): sheets_v4.Schema$Request[] {
+  const buttonFill = rgb("#1565c0");
+  const buttonText = rgb("#ffffff");
+  return [
+    setRowHeight(sheetId, SPACER_ROW - 1, 36),
+    mergeRange(sheetId, SPACER_ROW, SPACER_ROW, COL_MONTH, COL_MONEY + 1),
+    mergeRange(sheetId, SPACER_ROW, SPACER_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1),
+    styleRange(sheetId, SPACER_ROW, SPACER_ROW, COL_MONTH, COL_MONEY + 1, {
+      backgroundColor: buttonFill,
+      textFormat: { bold: true, fontSize: 12, foregroundColor: buttonText, underline: false },
+      horizontalAlignment: "CENTER",
+      verticalAlignment: "MIDDLE",
+    }),
+    styleRange(sheetId, SPACER_ROW, SPACER_ROW, COL_RANK_NUMBER, COL_RANK_MONEY + 1, {
+      backgroundColor: buttonFill,
+      textFormat: { bold: true, fontSize: 12, foregroundColor: buttonText, underline: false },
+      horizontalAlignment: "CENTER",
+      verticalAlignment: "MIDDLE",
+    }),
+  ];
 }
 
 function buildRankFormattingRequests(sheetId: number): sheets_v4.Schema$Request[] {
