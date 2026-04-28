@@ -14,11 +14,7 @@ import {
   toSheetApp,
   toSheetStatus,
 } from "./constants.ts";
-import {
-  firstInstantOfMonth,
-  lastInstantOfMonth,
-  previousMonthLabel,
-} from "./util/month.ts";
+import { kpiWindowStart, lastInstantOfMonth } from "./util/month.ts";
 import { resolveTargetMonthLabel } from "./resolve-target.ts";
 import { formatSection } from "./format-section.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
@@ -78,7 +74,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const targetMonthLabel =
     targetMonthOverride ?? resolveTargetMonthLabel(parsed, columnABackgrounds, now);
 
-  const windowStart = firstInstantOfMonth(previousMonthLabel(targetMonthLabel));
+  const windowStart = kpiWindowStart(targetMonthLabel);
   const windowEnd = targetMonthOverride ? lastInstantOfMonth(targetMonthLabel) : now;
 
   logger.info(

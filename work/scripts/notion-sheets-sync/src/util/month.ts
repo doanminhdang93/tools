@@ -56,6 +56,12 @@ export function previousMonthLabel(monthLabel: string): string {
   return formatMonthLabel(month - 1, year);
 }
 
+export function kpiWindowStart(targetMonthLabel: string): Date {
+  const previousMonth = previousMonthLabel(targetMonthLabel);
+  const { month, year } = parseMonthLabel(previousMonth, "kpiWindowStart");
+  return new Date(Date.UTC(year, month - 1, 10) - VIETNAM_OFFSET_MILLISECONDS);
+}
+
 export function monthLabelToDate(monthLabel: string): Date {
   const match = monthLabel.match(/^(\d{1,2})\/(\d{4})$/);
   if (!match) throw new Error(`monthLabelToDate: bad label "${monthLabel}"`);

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   currentMonthLabel,
   firstInstantOfMonth,
+  kpiWindowStart,
   lastInstantOfMonth,
   monthLabelFromIsoString,
   monthLabelToDate,
@@ -94,6 +95,23 @@ describe("firstInstantOfMonth", () => {
 
   it("throws on a malformed label", () => {
     expect(() => firstInstantOfMonth("April 2026")).toThrow(/bad label/);
+  });
+});
+
+describe("kpiWindowStart", () => {
+  it("returns day 10 of the month before the target", () => {
+    expect(kpiWindowStart("4/2026").toISOString()).toBe("2026-03-09T17:00:00.000Z");
+    expect(kpiWindowStart("5/2026").toISOString()).toBe("2026-04-09T17:00:00.000Z");
+    expect(kpiWindowStart("3/2026").toISOString()).toBe("2026-02-09T17:00:00.000Z");
+  });
+
+  it("crosses year boundary backwards", () => {
+    expect(kpiWindowStart("1/2026").toISOString()).toBe("2025-12-09T17:00:00.000Z");
+  });
+
+  it("returns midnight Vietnam time on day 10", () => {
+    const start = kpiWindowStart("4/2026");
+    expect(currentMonthLabel(start)).toBe("3/2026");
   });
 });
 

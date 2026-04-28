@@ -6,7 +6,7 @@ import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab } from "./sync.ts";
 import { syncTesterTab } from "./sync-tester.ts";
-import { firstInstantOfMonth, previousMonthLabel, currentMonthLabel } from "./util/month.ts";
+import { currentMonthLabel, kpiWindowStart } from "./util/month.ts";
 import { overrides } from "../tabs.config.ts";
 import { readMembers, type Member } from "./util/members.ts";
 import type { PointSource } from "./notion/fields.ts";
@@ -114,12 +114,6 @@ function targetSortOrder(role: string): number {
   return 0;
 }
 
-function earliestCreatedFetchFloor(monthOverride: string | undefined, now: Date): Date {
-  if (monthOverride) return firstInstantOfMonth(previousMonthLabel(monthOverride));
-  const previous = previousMonthLabel(currentMonthLabel(now));
-  const twoMonthsBack = previousMonthLabel(previous);
-  return firstInstantOfMonth(twoMonthsBack);
-}
 
 async function main(): Promise<void> {
   const appConfig = loadConfig();
@@ -145,7 +139,8 @@ async function main(): Promise<void> {
   const ordered = [...targetMembers].sort((left, right) => targetSortOrder(left.role) - targetSortOrder(right.role));
   logger.info(`Targets (${ordered.length}): ${ordered.map((m) => `${m.tabName}[${m.role}]`).join(", ")}`);
 
-  const createdOnOrAfter = earliestCreatedFetchFloor(parsed.monthLabel, new Date());
+  const targetLabelForWindow = parsed.monthLabel ?? currentMonthLabel(new Date());
+  const createdOnOrAfter = kpiWindowStart(targetLabelForWindow);
   logger.info(`Fetching pages from Notion DB ${appConfig.notionDatabaseId} on or after ${createdOnOrAfter.toISOString()}...`);
   const allPages = await fetchAllPages(appConfig.notionApiKey, appConfig.notionDatabaseId, { createdOnOrAfter });
   logger.info(`Fetched ${allPages.length} pages.`);
