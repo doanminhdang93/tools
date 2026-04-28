@@ -8,56 +8,65 @@
  *       Value: <fine-grained PAT, Actions:R&W on doanminhdang93/tools>
  *  3. Save → reload Sheet — the "🔄 Sync" menu appears.
  *
- * Menu structure:
- *   🔄 Sync
- *     ├─ Sync ALL members ▶
- *     │   ├─ Recent 3 months
- *     │   ├─ <prev month> / <current month> / <next month>
- *     │   └─ Other month…
- *     ├─ Sync this tab ▶
- *     │   └─ (same five options)
- *     └─ Custom sync…  (modal: pick member + month from dropdowns)
+ * The system started in 4/2026; pickers and recent-3 never go below that.
  */
 
 const REPO = "doanminhdang93/tools";
 const WORKFLOW_FILE = "notion-sheets-sync.yml";
 const REF = "main";
+const FLOOR_MONTH = { year: 2026, month: 4 };
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  const months = recentThreeMonthLabels();
-
-  const allMenu = ui
-    .createMenu("Sync ALL members")
-    .addItem(`Recent 3 months (${months.join(", ")})`, "syncAllRecent3")
-    .addSeparator()
-    .addItem(`${months[0]} (last month)`, "syncAllPrevMonth")
-    .addItem(`${months[1]} (current month)`, "syncAllCurrentMonth")
-    .addItem(`${months[2]} (next month)`, "syncAllNextMonth")
-    .addSeparator()
-    .addItem("Other month…", "syncAllOtherMonth");
-
-  const tabMenu = ui
-    .createMenu("Sync this tab")
-    .addItem(`Recent 3 months (${months.join(", ")})`, "syncThisTabRecent3")
-    .addSeparator()
-    .addItem(`${months[0]} (last month)`, "syncThisTabPrevMonth")
-    .addItem(`${months[1]} (current month)`, "syncThisTabCurrentMonth")
-    .addItem(`${months[2]} (next month)`, "syncThisTabNextMonth")
-    .addSeparator()
-    .addItem("Other month…", "syncThisTabOtherMonth");
 
   ui.createMenu("🔄 Sync")
-    .addSubMenu(allMenu)
-    .addSubMenu(tabMenu)
+    .addSubMenu(buildScopeSubmenu("Sync ALL members", "syncAll"))
+    .addSubMenu(buildScopeSubmenu("Sync this tab", "syncThisTab"))
     .addSeparator()
     .addItem("Custom sync…", "openCustomSyncDialog")
     .addToUi();
 }
 
+function buildScopeSubmenu(label, prefix) {
+  const ui = SpreadsheetApp.getUi();
+  const validRecent = recentThreeMonthLabels();
+  const menu = ui.createMenu(label);
+
+  if (validRecent.length > 0) {
+    menu.addItem(`Recent ${validRecent.length} months (${validRecent.join(", ")})`, `${prefix}Recent3`);
+  }
+
+  const offsetItems = [
+    { offset: -1, suffix: "last month", handler: `${prefix}PrevMonth` },
+    { offset: 0, suffix: "current month", handler: `${prefix}CurrentMonth` },
+    { offset: 1, suffix: "next month", handler: `${prefix}NextMonth` },
+  ].filter((item) => isMonthAtOrAfterFloor(addMonthsLabel(item.offset)));
+
+  if (offsetItems.length > 0) menu.addSeparator();
+  offsetItems.forEach((item) => {
+    menu.addItem(`${addMonthsLabel(item.offset)} (${item.suffix})`, item.handler);
+  });
+
+  menu.addSeparator().addItem("Other month…", `${prefix}OtherMonth`);
+  return menu;
+}
+
+function isMonthAtOrAfterFloor(label) {
+  const match = label.match(/^(\d+)\/(\d+)$/);
+  if (!match) return false;
+  const month = Number(match[1]);
+  const year = Number(match[2]);
+  if (year > FLOOR_MONTH.year) return true;
+  if (year < FLOOR_MONTH.year) return false;
+  return month >= FLOOR_MONTH.month;
+}
+
 function recentThreeMonthLabels() {
-  const offsets = [-1, 0, 1];
-  return offsets.map((offset) => addMonthsLabel(offset));
+  return [-1, 0, 1].map((offset) => addMonthsLabel(offset)).filter(isMonthAtOrAfterFloor);
+}
+
+function pickerMonthLabels() {
+  return [-3, -2, -1, 0, 1, 2, 3].map((offset) => addMonthsLabel(offset)).filter(isMonthAtOrAfterFloor);
 }
 
 function addMonthsLabel(offset) {
@@ -103,12 +112,16 @@ function syncThisTabOtherMonth() {
 function openCustomSyncDialog() {
   const members = getMemberList();
   const months = pickerMonthLabels();
+  const recent = recentThreeMonthLabels();
   const memberOptions = members
     .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
     .join("");
   const monthOptions = months
     .map((label) => `<option value="${escapeHtml(label)}">${escapeHtml(label)}</option>`)
     .join("");
+  const recent3Label = recent.length > 0
+    ? `Recent ${recent.length} months (${recent.join(", ")})`
+    : "Recent months (none yet)";
 
   const html = `
 <!DOCTYPE html>
@@ -125,7 +138,6 @@ function openCustomSyncDialog() {
       button.primary:hover { background: #1765cc; }
       button.secondary { background: white; border: 1px solid #dadce0; color: #1a73e8; }
       button.secondary:hover { background: #f8f9fa; }
-      .hint { font-size: 12px; color: #5f6368; margin-top: 4px; }
     </style>
   </head>
   <body>
@@ -137,7 +149,7 @@ function openCustomSyncDialog() {
 
     <label for="month">Month</label>
     <select id="month">
-      <option value="recent3">Recent 3 months (${months.slice(2, 5).join(", ")})</option>
+      <option value="recent3">${escapeHtml(recent3Label)}</option>
       ${monthOptions}
     </select>
 
@@ -184,11 +196,6 @@ function getMemberList() {
     .filter((name) => name.length > 0);
 }
 
-function pickerMonthLabels() {
-  const offsets = [-3, -2, -1, 0, 1, 2, 3];
-  return offsets.map((offset) => addMonthsLabel(offset));
-}
-
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -205,6 +212,10 @@ function promptForMonth() {
   const text = resp.getResponseText().trim();
   if (!/^\d{1,2}\/\d{4}$/.test(text)) {
     ui.alert("Invalid month format. Use M/YYYY");
+    return null;
+  }
+  if (!isMonthAtOrAfterFloor(text)) {
+    ui.alert(`No syncs allowed before ${FLOOR_MONTH.month}/${FLOOR_MONTH.year}.`);
     return null;
   }
   return text;
@@ -226,6 +237,10 @@ function fireSync(inputs) {
 
   if (inputs.recent3) {
     const months = recentThreeMonthLabels();
+    if (months.length === 0) {
+      SpreadsheetApp.getUi().alert(`No syncable months — floor is ${FLOOR_MONTH.month}/${FLOOR_MONTH.year}.`);
+      return;
+    }
     const baseInputs = {};
     if (inputs.tab) baseInputs.tab = inputs.tab;
 
@@ -250,6 +265,11 @@ function fireSync(inputs) {
           failures.map((r) => `HTTP ${r.getResponseCode()}: ${r.getContentText()}`).join("\n\n"),
       );
     }
+    return;
+  }
+
+  if (inputs.month && !isMonthAtOrAfterFloor(inputs.month)) {
+    SpreadsheetApp.getUi().alert(`No syncs allowed before ${FLOOR_MONTH.month}/${FLOOR_MONTH.year}.`);
     return;
   }
 
