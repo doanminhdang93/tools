@@ -21,6 +21,7 @@ import {
   followerNamesOf,
   createdTimeOf,
 } from "./notion/fields.ts";
+import { formatSection } from "./format-section.ts";
 
 const COASSIGNEE_ROLES = new Set(["developer", "sublead", "po", "designer"]);
 
@@ -114,6 +115,12 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<void> {
 
   const tasks = [...tasksByUrl.values()];
   await replaceMonthSection(sheets, testerTab, monthLabel, testerRole, tasks, logger);
+  await formatSection({
+    sheetsApi: sheets.rawApi,
+    spreadsheetId: sheets.spreadsheetId,
+    tabName: testerTab,
+    monthLabel,
+  });
 }
 
 function collectTaskRows(rows: string[][], monthLabel: string): string[][] {

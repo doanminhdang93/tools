@@ -6,16 +6,17 @@ import { Client as NotionClient } from "@notionhq/client";
 import { loadConfig } from "../src/config.ts";
 import { COLUMN_INDEX, columnLetter, toSheetApp, toSheetStatus, moneyFormulaForRole } from "../src/constants.ts";
 import { readMembers } from "../src/util/members.ts";
+import { currentMonthLabel } from "../src/util/month.ts";
 
 loadDotenv({ path: resolve(import.meta.dirname, "../../../../.token.env") });
 
 const TARGET_TAB = process.argv[2];
 const NOTION_PAGE_ID = process.argv[3];
 const OVERRIDE_POINTS = process.argv[4];
-const TARGET_MONTH = process.argv[5] ?? "3/2026";
+const TARGET_MONTH = process.argv[5] ?? currentMonthLabel(new Date());
 
 if (!TARGET_TAB || !NOTION_PAGE_ID) {
-  console.error("Usage: tsx commands/add-notion-task.ts <Tab> <NotionPageId> [overridePoints] [Month=3/2026]");
+  console.error("Usage: tsx commands/add-notion-task.ts <Tab> <NotionPageId> [overridePoints] [Month=current]");
   process.exit(1);
 }
 
@@ -49,7 +50,7 @@ async function main() {
   const statusName = statusProperty?.status?.name ?? statusProperty?.select?.name ?? "";
   const status = statusName ? toSheetStatus(statusName) : "";
 
-  const notionPoints = Number((properties["Story Points"] as { number?: number })?.number ?? 0);
+  const notionPoints = readSelectAsNumber(properties["Story Point"]) || readSelectAsNumber(properties["Size Card"]);
   const points = OVERRIDE_POINTS ? Number(OVERRIDE_POINTS) : notionPoints;
   const link = `https://www.notion.so/${page.id.replace(/-/g, "")}`;
 
@@ -164,6 +165,14 @@ async function main() {
     },
   });
   console.log(`✔ updated header SUM range = ${pointCol}${firstTaskOneBased}:${pointCol}${lastTaskOneBased}`);
+}
+
+function readSelectAsNumber(property: { type: string; [key: string]: unknown } | undefined): number {
+  if (!property || property.type !== "select") return 0;
+  const select = (property as { select?: { name?: string } | null }).select;
+  if (!select?.name) return 0;
+  const asNumber = Number(select.name);
+  return Number.isFinite(asNumber) ? asNumber : 0;
 }
 
 main().catch((cause) => {

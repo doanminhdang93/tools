@@ -20,6 +20,7 @@ import {
   previousMonthLabel,
 } from "./util/month.ts";
 import { resolveTargetMonthLabel } from "./resolve-target.ts";
+import { formatSection } from "./format-section.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
 import {
   titleOf,
@@ -31,8 +32,6 @@ import {
   followerNamesOf,
   type PointSource,
 } from "./notion/fields.ts";
-
-const DEV_ROLES = new Set(["developer", "sublead"]);
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {
@@ -45,7 +44,6 @@ export interface SyncTabArgs {
   targetMonthOverride?: string;
   pointSource?: PointSource;
   role?: string;
-  roleByAssigneeName?: Map<string, string>;
 }
 
 export interface SyncTabResult {
@@ -68,10 +66,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     targetMonthOverride,
     pointSource = "size_card",
     role = "",
-    roleByAssigneeName,
   } = args;
   const pointRate = pointRateForRole(role);
-  const isTester = role.trim().toLowerCase() === "tester";
 
   await sheets.writeRange(tabName, 1, [[...SHEET_COLUMN_HEADERS]]);
 
@@ -97,7 +93,6 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     windowStart,
     windowEnd,
     pageIdsInOtherSections,
-    isTester ? { mustHaveDevCoassignee: true, roleByAssigneeName: roleByAssigneeName ?? new Map() } : undefined,
   );
   candidatePages.sort(byCreatedTimeAscending);
 
@@ -128,7 +123,12 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     }
   }
 
-  await applySectionFormat(sheets, tabName, parsed, targetMonthLabel, writeStartRow, logger);
+  await formatSection({
+    sheetsApi: sheets.rawApi,
+    spreadsheetId: sheets.spreadsheetId,
+    tabName,
+    monthLabel: targetMonthLabel,
+  });
 
   logger.info(
     `[${tabName}] done — ${targetMonthLabel} tasks=${newTaskRows.length} points=${totalPoints} money=${totalMoney.toLocaleString("en-US")}`,
@@ -144,18 +144,12 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   };
 }
 
-interface TesterFilterOptions {
-  mustHaveDevCoassignee: true;
-  roleByAssigneeName: Map<string, string>;
-}
-
 function pagesInCandidateWindow(
   allPages: NotionPage[],
   assigneeName: string,
   windowStart: Date,
   windowEnd: Date,
   pageIdsAlreadyInOtherSections: Set<string>,
-  testerFilter?: TesterFilterOptions,
 ): NotionPage[] {
   const assignedPages = filterByAssignee(allPages, assigneeName);
   return assignedPages.filter((page) => {
@@ -170,21 +164,8 @@ function pagesInCandidateWindow(
     const normalizedPageId = normalizeNotionPageId(page.id);
     if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;
 
-    if (testerFilter) return passesTesterCoassigneeRule(page, assigneeName, testerFilter.roleByAssigneeName);
-
     return true;
   });
-}
-
-function passesTesterCoassigneeRule(
-  page: NotionPage,
-  testerName: string,
-  roleByAssigneeName: Map<string, string>,
-): boolean {
-  const assignees = assigneeNamesOf(page);
-  const others = assignees.filter((name) => name !== testerName);
-  if (others.length === 0) return true;
-  return others.some((name) => DEV_ROLES.has((roleByAssigneeName.get(name) ?? "").trim().toLowerCase()));
 }
 
 function collectPageIdsOutsideCurrentSection(
@@ -260,42 +241,6 @@ function buildMonthHeaderRow(
   row[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
   row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowIndex);
   return row;
-}
-
-async function applySectionFormat(
-  sheets: SheetsClient,
-  tabName: string,
-  parsed: ParsedTab,
-  currentMonth: string,
-  headerRowIndex: number,
-  logger: Logger,
-): Promise<void> {
-  const reference = findFormatReferenceSection(parsed, currentMonth);
-  if (!reference) {
-    logger.warn(`[${tabName}] no reference section found — skipping format copy`);
-    return;
-  }
-
-  const referenceSeparatorRow = reference.headerRowIndex - 1;
-  if (referenceSeparatorRow < 1) {
-    logger.warn(`[${tabName}] reference section has no separator row — skipping format copy`);
-    return;
-  }
-
-  await sheets.applySectionStyle(tabName, {
-    referenceSeparatorRow,
-    referenceHeaderRow: reference.headerRowIndex,
-    destinationSeparatorRow: headerRowIndex - 1,
-    destinationHeaderRow: headerRowIndex,
-  });
-}
-
-function findFormatReferenceSection(
-  parsed: ParsedTab,
-  currentMonth: string,
-): MonthSection | undefined {
-  const candidates = parsed.sections.filter((section) => section.monthLabel !== currentMonth);
-  return candidates[candidates.length - 1];
 }
 
 function logSyncedTasks(logger: Logger, tabName: string, pages: NotionPage[], pointSource: PointSource): void {

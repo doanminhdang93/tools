@@ -44,7 +44,12 @@ export function storyPointNumberOf(page: NotionPage): number {
 export type PointSource = "size_card" | "story_point";
 
 export function pointNumberOf(page: NotionPage, source: PointSource): number {
-  return source === "story_point" ? storyPointNumberOf(page) : sizeCardNumberOf(page);
+  if (source === "story_point") {
+    const storyPoint = storyPointNumberOf(page);
+    if (storyPoint > 0) return storyPoint;
+    return sizeCardNumberOf(page);
+  }
+  return sizeCardNumberOf(page);
 }
 
 export function createdTimeOf(page: NotionPage): string {
