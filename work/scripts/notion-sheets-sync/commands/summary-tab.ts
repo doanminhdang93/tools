@@ -45,7 +45,6 @@ const COL_RANK_MEMBER = 7;
 const COL_RANK_POINT = 8;
 const COL_RANK_MONEY = 9;
 const COL_RANK_HELPER_TAB = 11;
-const COL_RANK_HELPER_POINT = 12;
 const COL_RANK_HELPER_MONEY = 13;
 
 const TITLE_ROW = 1;
@@ -292,7 +291,7 @@ async function writeSummaryContent(
   const dataEndRow = FIRST_MONTH_ROW + Math.max(capacityRows, 1) - 1;
 
   const monthSpillFormula =
-    `=IFERROR(SORT(UNIQUE(FILTER(${memberRef},ISNUMBER(${memberRef}))),` +
+    `=IFERROR(SORT(UNIQUE(FILTER(${memberRef},ISNUMBER(${memberRef}),${memberRef}>40000)),` +
     `1,$C$3=${JSON.stringify(SORT_ASC_LABEL)}),"")`;
   const pointSpillFormula =
     `=ARRAYFORMULA(IF(B${FIRST_MONTH_ROW}:B${dataEndRow}="","",` +
@@ -345,7 +344,6 @@ function buildRankUpdates(selectedRankSort: string): sheets_v4.Schema$ValueRange
   const rankPointCol = columnLetter(COL_RANK_POINT);
   const rankMoneyCol = columnLetter(COL_RANK_MONEY);
   const helperTabCol = columnLetter(COL_RANK_HELPER_TAB);
-  const helperPointCol = columnLetter(COL_RANK_HELPER_POINT);
   const helperMoneyCol = columnLetter(COL_RANK_HELPER_MONEY);
 
   const rankFirstRow = FIRST_MONTH_ROW;
@@ -353,8 +351,8 @@ function buildRankUpdates(selectedRankSort: string): sheets_v4.Schema$ValueRange
 
   const helperRows = MEMBER_TABS.map((tabName) => [
     tabName,
-    `=SUMIF('${tabName}'!A:A, "<>", '${tabName}'!${memberPointCol}:${memberPointCol})`,
-    `=SUMIF('${tabName}'!A:A, "<>", '${tabName}'!${memberMoneyCol}:${memberMoneyCol})`,
+    `=SUMIF('${tabName}'!A:A, ">40000", '${tabName}'!${memberPointCol}:${memberPointCol})`,
+    `=SUMIF('${tabName}'!A:A, ">40000", '${tabName}'!${memberMoneyCol}:${memberMoneyCol})`,
   ]);
 
   const sortColumnExpression = `IF($${rankMemberCol}$${SORT_ROW}=${JSON.stringify(RANK_SORT_MONEY_LABEL)},3,2)`;
