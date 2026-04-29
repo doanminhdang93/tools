@@ -38,6 +38,13 @@ export interface SyncTesterArgs {
   logger: Logger;
 }
 
+export interface SyncTesterResult {
+  tabName: string;
+  monthLabel: string;
+  totalPoints: number;
+  taskCount: number;
+}
+
 interface TaskEntry {
   title: string;
   notionUrl: string;
@@ -49,7 +56,7 @@ interface TaskEntry {
   source: string;
 }
 
-export async function syncTesterTab(args: SyncTesterArgs): Promise<void> {
+export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterResult> {
   const { testerTab, testerNotionName, testerRole, monthLabel, members, allPages, sheets, logger } = args;
   logger.info(`[${testerTab}] tester sync — month=${monthLabel}, notion="${testerNotionName}"`);
 
@@ -136,6 +143,12 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<void> {
     tabName: testerTab,
     monthLabel,
   });
+
+  const totalPoints = tasks.reduce(
+    (sum, task) => sum + (Number((task.point ?? "").replace(/,/g, "")) || 0),
+    0,
+  );
+  return { tabName: testerTab, monthLabel, totalPoints, taskCount: tasks.length };
 }
 
 async function collectPreservedTesterSectionRows(

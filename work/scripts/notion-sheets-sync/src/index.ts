@@ -5,8 +5,8 @@ import { loadConfig } from "./config.ts";
 import { fetchAllPages } from "./notion/client.ts";
 import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
-import { syncTab } from "./sync.ts";
-import { syncTesterTab } from "./sync-tester.ts";
+import { syncTab, type SyncTabResult } from "./sync.ts";
+import { syncTesterTab, type SyncTesterResult } from "./sync-tester.ts";
 import { currentMonthLabel, kpiWindowStart } from "./util/month.ts";
 import { overrides } from "../tabs.config.ts";
 import { readMembers, type Member } from "./util/members.ts";
@@ -136,13 +136,25 @@ async function main(): Promise<void> {
   const notionClient = new NotionClient({ auth: appConfig.notionApiKey });
   const monthLabel = parsed.monthLabel ?? currentMonthLabel(new Date());
 
+  interface SyncedSummary {
+    tabName: string;
+    role: string;
+    taskCount: number;
+    totalPoints: number;
+  }
+
   const failures: string[] = [];
-  for (const member of ordered) {
+  const successes: SyncedSummary[] = [];
+  const SLEEP_BETWEEN_TABS_MS = 15000;
+
+  for (let memberIndex = 0; memberIndex < ordered.length; memberIndex++) {
+    const member = ordered[memberIndex];
     const role = member.role.trim().toLowerCase();
     const notionName = notionDisplayNameFor(member);
     try {
+      let result: SyncTabResult | SyncTesterResult;
       if (role === TESTER_ROLE) {
-        await syncTesterTab({
+        result = await syncTesterTab({
           testerTab: member.tabName,
           testerNotionName: notionName,
           testerRole: member.role,
@@ -152,35 +164,75 @@ async function main(): Promise<void> {
           sheets,
           logger,
         });
-        continue;
+      } else {
+        const pointSource = pointSourceForRole(member.role);
+        if (pointSource === "story_point") logger.info(`[${member.tabName}] role "${member.role}" → using Story Points`);
+        result = await syncTab({
+          tabName: member.tabName,
+          assigneeName: notionName,
+          allPages,
+          sheets,
+          logger,
+          targetMonthOverride: parsed.monthLabel,
+          pointSource,
+          role: member.role,
+          notionClient,
+        });
       }
-
-      const pointSource = pointSourceForRole(member.role);
-      if (pointSource === "story_point") logger.info(`[${member.tabName}] role "${member.role}" → using Story Points`);
-      await syncTab({
+      successes.push({
         tabName: member.tabName,
-        assigneeName: notionName,
-        allPages,
-        sheets,
-        logger,
-        targetMonthOverride: parsed.monthLabel,
-        pointSource,
         role: member.role,
-        notionClient,
+        taskCount: result.taskCount,
+        totalPoints: result.totalPoints,
       });
     } catch (cause) {
       const message = `Tab "${member.tabName}" failed: ${(cause as Error).message}`;
       logger.error(message, cause);
       failures.push(message);
     }
+
+    if (memberIndex < ordered.length - 1) {
+      logger.info(`Sleeping ${SLEEP_BETWEEN_TABS_MS / 1000}s before next tab to respect Sheets API rate limit`);
+      await new Promise((resolveAfter) => setTimeout(resolveAfter, SLEEP_BETWEEN_TABS_MS));
+    }
   }
 
+  const successSummary = buildSyncSummary(monthLabel, successes, failures);
+  logger.info(successSummary);
+
   if (failures.length > 0) {
-    await logger.notifyFailure(failures.join("\n"));
+    await logger.notifyFailure(successSummary);
     process.exit(1);
   }
 
+  await logger.notifySuccess(successSummary);
   logger.info("All targets synced OK.");
+}
+
+function buildSyncSummary(
+  monthLabel: string,
+  successes: { tabName: string; role: string; taskCount: number; totalPoints: number }[],
+  failures: string[],
+): string {
+  const lines: string[] = [];
+  lines.push(`Month: ${monthLabel}`);
+  lines.push(`Synced: ${successes.length}, Failed: ${failures.length}`);
+  lines.push("");
+
+  const totalTasks = successes.reduce((sum, member) => sum + member.taskCount, 0);
+  const totalPoints = successes.reduce((sum, member) => sum + member.totalPoints, 0);
+  for (const member of successes) {
+    lines.push(`• ${member.tabName} [${member.role}] — ${member.taskCount} tasks, ${member.totalPoints} pts`);
+  }
+  lines.push("");
+  lines.push(`Total: ${totalTasks} tasks, ${totalPoints} pts`);
+
+  if (failures.length > 0) {
+    lines.push("");
+    lines.push("Failures:");
+    for (const failure of failures) lines.push(`✗ ${failure}`);
+  }
+  return lines.join("\n");
 }
 
 main().catch((cause) => {

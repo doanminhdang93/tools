@@ -5,6 +5,7 @@ export interface Logger {
   warn(message: string, cause?: unknown): void;
   error(message: string, cause?: unknown): void;
   notifyFailure(summary: string): Promise<void>;
+  notifySuccess(summary: string): Promise<void>;
 }
 
 export interface LoggerOptions {
@@ -17,7 +18,8 @@ function timestamp(): string {
 }
 
 export function createLogger(options: LoggerOptions): Logger {
-  const slackNotifier = buildSlackNotifier(options);
+  const failureNotifier = buildSlackNotifier(options, ":rotating_light: notion-sheets-sync failed");
+  const successNotifier = buildSlackNotifier(options, ":white_check_mark: notion-sheets-sync OK");
 
   return {
     info(message) {
@@ -29,11 +31,15 @@ export function createLogger(options: LoggerOptions): Logger {
     error(message, cause) {
       console.error(`[${timestamp()}] ERROR ${message}`, cause ?? "");
     },
-    notifyFailure: slackNotifier,
+    notifyFailure: failureNotifier,
+    notifySuccess: successNotifier,
   };
 }
 
-function buildSlackNotifier(options: LoggerOptions): (summary: string) => Promise<void> {
+function buildSlackNotifier(
+  options: LoggerOptions,
+  headerLine: string,
+): (summary: string) => Promise<void> {
   const { slackBotToken, notifyChannel } = options;
 
   if (!slackBotToken || !notifyChannel) {
@@ -50,7 +56,7 @@ function buildSlackNotifier(options: LoggerOptions): (summary: string) => Promis
         },
         body: JSON.stringify({
           channel: notifyChannel,
-          text: `:rotating_light: notion-sheets-sync failed\n\`\`\`${summary}\`\`\``,
+          text: `${headerLine}\n\`\`\`${summary}\`\`\``,
         }),
       });
 
