@@ -8,7 +8,7 @@ import { createSheetsClient } from "../src/sheets/client.ts";
 import { createLogger } from "../src/logger.ts";
 import { readMembers } from "../src/util/members.ts";
 import { overrides } from "../tabs.config.ts";
-import { kpiWindowStart } from "../src/util/month.ts";
+import { firstInstantOfMonth } from "../src/util/month.ts";
 import type { PointSource } from "../src/notion/fields.ts";
 
 loadDotenv({ path: resolve(import.meta.dirname, "../../../../.token.env") });
@@ -46,7 +46,7 @@ async function main() {
   const windowEnd = new Date(WINDOW_END_ISO);
   if (Number.isNaN(windowEnd.getTime())) throw new Error(`Bad ISO: ${WINDOW_END_ISO}`);
 
-  const windowStart = kpiWindowStart(MONTH);
+  const windowStart = firstInstantOfMonth(MONTH);
   logger.info(`Custom window: ${windowStart.toISOString()} → ${windowEnd.toISOString()}`);
 
   const allPages = await fetchAllPages(appConfig.notionApiKey, appConfig.notionDatabaseId, {

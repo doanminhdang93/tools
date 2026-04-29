@@ -7,7 +7,7 @@ import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab, type SyncTabResult } from "./sync.ts";
 import { syncTesterTab, type SyncTesterResult } from "./sync-tester.ts";
-import { currentMonthLabel, kpiWindowStart } from "./util/month.ts";
+import { currentMonthLabel, firstInstantOfMonth } from "./util/month.ts";
 import { overrides } from "../tabs.config.ts";
 import { readMembers, type Member } from "./util/members.ts";
 import type { PointSource } from "./notion/fields.ts";
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
   logger.info(`Targets (${ordered.length}): ${ordered.map((m) => `${m.tabName}[${m.role}]`).join(", ")}`);
 
   const targetLabelForWindow = parsed.monthLabel ?? currentMonthLabel(new Date());
-  const createdOnOrAfter = kpiWindowStart(targetLabelForWindow);
+  const createdOnOrAfter = firstInstantOfMonth(targetLabelForWindow);
   logger.info(`Fetching pages from Notion DB ${appConfig.notionDatabaseId} on or after ${createdOnOrAfter.toISOString()}...`);
   const allPages = await fetchAllPages(appConfig.notionApiKey, appConfig.notionDatabaseId, { createdOnOrAfter });
   logger.info(`Fetched ${allPages.length} pages.`);
