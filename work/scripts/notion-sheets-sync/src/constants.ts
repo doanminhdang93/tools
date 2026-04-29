@@ -8,7 +8,11 @@ export function pointRateForRole(role: string): number {
   return 45_000;
 }
 
-export function moneyFormulaForRole(role: string, pointCol: string, headerRowOneBased: number): string {
+export function moneyFormulaForRole(
+  role: string,
+  pointCol: string,
+  headerRowOneBased: number,
+): string {
   const pointRate = pointRateForRole(role);
   const isTester = role.trim().toLowerCase() === "tester";
   return isTester
@@ -64,7 +68,9 @@ const SHEET_APP_BY_LOWERCASE_NOTION_TAG = new Map<string, string>(
 );
 
 export function toSheetApp(notionTag: string): string {
-  const sheetApp = SHEET_APP_BY_LOWERCASE_NOTION_TAG.get(notionTag.trim().toLowerCase());
+  const sheetApp = SHEET_APP_BY_LOWERCASE_NOTION_TAG.get(
+    notionTag.trim().toLowerCase(),
+  );
   return sheetApp ?? notionTag;
 }
 
@@ -84,6 +90,7 @@ const NOTION_TO_SHEET_STATUS = {
   "Wait To Review": "Wait to Review",
   Reviewing: "Reviewing",
   "Wait To Live": "Live",
+  "Review Done": "Review Done",
 } as const;
 
 export const SYNCABLE_STATUSES = Object.keys(NOTION_TO_SHEET_STATUS);

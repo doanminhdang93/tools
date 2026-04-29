@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { google } from "googleapis";
 import { loadConfig } from "../src/config.ts";
+import { MONTH_HEADER_PATTERN } from "../src/constants.ts";
 
 loadDotenv({ path: resolve(import.meta.dirname, "../../../../.token.env") });
 
@@ -30,7 +31,7 @@ async function main() {
 
   const valuesResponse = await sheetsApi.spreadsheets.values.get({
     spreadsheetId,
-    range: `${TAB}!A:A`,
+    range: `${TAB}!A:B`,
   });
   const rows = valuesResponse.data.values ?? [];
 
@@ -42,7 +43,12 @@ async function main() {
       headerZeroBased = i;
       for (let j = i + 1; j < rows.length; j++) {
         const nextA = (rows[j]?.[0] ?? "").toString().trim();
-        if (nextA && nextA !== MONTH) {
+        const nextB = (rows[j]?.[1] ?? "").toString().trim();
+        if (MONTH_HEADER_PATTERN.test(nextA) && nextA !== MONTH) {
+          nextSectionZeroBased = j;
+          break;
+        }
+        if (!nextA && !nextB) {
           nextSectionZeroBased = j;
           break;
         }

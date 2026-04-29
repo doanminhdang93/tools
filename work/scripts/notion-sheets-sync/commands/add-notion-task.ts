@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { google } from "googleapis";
 import { Client as NotionClient } from "@notionhq/client";
 import { loadConfig } from "../src/config.ts";
-import { COLUMN_INDEX, columnLetter, toSheetApp, toSheetStatus, moneyFormulaForRole } from "../src/constants.ts";
+import { COLUMN_INDEX, MONTH_HEADER_PATTERN, columnLetter, toSheetApp, toSheetStatus, moneyFormulaForRole } from "../src/constants.ts";
 import { readMembers } from "../src/util/members.ts";
 import { currentMonthLabel } from "../src/util/month.ts";
 
@@ -95,7 +95,8 @@ async function main() {
   for (let rowIndex = headerRowZeroBased + 1; rowIndex < rows.length; rowIndex++) {
     const colA = (rows[rowIndex]?.[0] ?? "").toString().trim();
     const colB = (rows[rowIndex]?.[1] ?? "").toString().trim();
-    if (colA) break;
+    if (MONTH_HEADER_PATTERN.test(colA) && colA !== TARGET_MONTH) break;
+    if (!colA && !colB) break;
     if (!colB) break;
     lastTaskRowZeroBased = rowIndex;
   }
@@ -125,7 +126,9 @@ async function main() {
   });
 
   const insertAtOneBased = insertAtZeroBased + 1;
+  const stt = insertAtZeroBased - headerRowZeroBased;
   const newRow: (string | number)[] = new Array(COLUMN_INDEX.followers + 1).fill("");
+  newRow[COLUMN_INDEX.month] = stt;
   newRow[COLUMN_INDEX.title] = title;
   newRow[COLUMN_INDEX.link] = link;
   newRow[COLUMN_INDEX.app] = app;

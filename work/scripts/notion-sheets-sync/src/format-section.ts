@@ -1,5 +1,5 @@
 import type { sheets_v4 } from "googleapis";
-import { COLUMN_INDEX } from "./constants.ts";
+import { COLUMN_INDEX, MONTH_HEADER_PATTERN } from "./constants.ts";
 
 const SOURCE_TAB = "DangDM";
 const SOURCE_VALIDATION_ROW = 336;
@@ -54,7 +54,8 @@ export async function formatSection(args: FormatSectionArgs): Promise<void> {
   for (let i = headerRowZeroBased + 1; i < rows.length; i++) {
     const colA = (rows[i]?.[0] ?? "").toString().trim();
     const colB = (rows[i]?.[1] ?? "").toString().trim();
-    if (colA) break;
+    if (MONTH_HEADER_PATTERN.test(colA) && colA !== monthLabel) break;
+    if (!colA && !colB) break;
     if (!colB) break;
     lastTaskRowZeroBased = i;
   }
@@ -110,6 +111,22 @@ export async function formatSection(args: FormatSectionArgs): Promise<void> {
       fields: "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment)",
     },
   });
+
+  if (lastTaskRowZeroBased > headerRowZeroBased) {
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: headerRowZeroBased + 1,
+          endRowIndex: lastTaskRowZeroBased + 1,
+          startColumnIndex: COLUMN_INDEX.month,
+          endColumnIndex: COLUMN_INDEX.month + 1,
+        },
+        cell: { userEnteredFormat: { horizontalAlignment: "CENTER" } },
+        fields: "userEnteredFormat.horizontalAlignment",
+      },
+    });
+  }
 
   for (const sepRowZeroBased of [separatorAboveZeroBased, closingSeparatorZeroBased]) {
     requests.push({
@@ -242,7 +259,8 @@ async function compactStaleRowsAfterSection(
   for (let i = headerRowZeroBased + 1; i < rows.length; i++) {
     const colA = (rows[i]?.[0] ?? "").toString().trim();
     const colB = (rows[i]?.[1] ?? "").toString().trim();
-    if (colA) break;
+    if (MONTH_HEADER_PATTERN.test(colA) && colA !== monthLabel) break;
+    if (!colA && !colB) break;
     if (!colB) break;
     lastTaskRowZeroBased = i;
   }

@@ -19,8 +19,10 @@ import {
   sizeCardNumberOf,
   assigneeNamesOf,
   followerNamesOf,
-  createdTimeOf,
+  deliveredDateOf,
 } from "./notion/fields.ts";
+import { extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
+import { firstInstantOfMonth, lastInstantOfMonth } from "./util/month.ts";
 import { formatSection } from "./format-section.ts";
 
 const COASSIGNEE_ROLES = new Set(["developer", "sublead", "po", "designer"]);
@@ -80,23 +82,24 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<void> {
   }
   logger.info(`[${testerTab}] from coassignee tabs: ${tasksByUrl.size} task(s)`);
 
-  const monthMatch = monthLabel.match(/^(\d{1,2})\/(\d{4})$/);
-  if (!monthMatch) throw new Error(`Bad month label: ${monthLabel}`);
-  const targetMonth = Number(monthMatch[1]);
-  const targetYear = Number(monthMatch[2]);
+  const windowStart = firstInstantOfMonth(monthLabel);
+  const windowEnd = lastInstantOfMonth(monthLabel);
 
   const myPages = filterByAssignee(allPages, testerNotionName);
+  const soleTesterPagesById = new Map<string, NotionPage>();
   let soloAdded = 0;
   for (const page of myPages) {
     if (!isSyncableStatus(statusOf(page))) continue;
     const assignees = assigneeNamesOf(page);
     if (assignees.length !== 1) continue;
     if (assignees[0] !== testerNotionName) continue;
-    const created = createdTimeOf(page);
-    if (!created) continue;
-    const createdAt = new Date(created);
-    if (createdAt.getUTCFullYear() !== targetYear) continue;
-    if (createdAt.getUTCMonth() + 1 !== targetMonth) continue;
+    soleTesterPagesById.set(normalizeNotionPageId(page.id), page);
+
+    const deliveredIso = deliveredDateOf(page);
+    if (!deliveredIso) continue;
+    const deliveredAt = new Date(deliveredIso);
+    if (deliveredAt < windowStart || deliveredAt > windowEnd) continue;
+
     const url = `https://www.notion.so/${page.id.replace(/-/g, "")}`;
     if (tasksByUrl.has(url)) continue;
     tasksByUrl.set(url, {
@@ -113,6 +116,18 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<void> {
   }
   logger.info(`[${testerTab}] sole-tester additions: ${soloAdded}`);
 
+  const preservedTesterRows = await collectPreservedTesterSectionRows(
+    sheets,
+    testerTab,
+    monthLabel,
+    soleTesterPagesById,
+    tasksByUrl,
+  );
+  if (preservedTesterRows.length > 0) {
+    logger.info(`[${testerTab}] preserved ${preservedTesterRows.length} existing row(s) without Delivered Date`);
+  }
+  for (const preserved of preservedTesterRows) tasksByUrl.set(preserved.notionUrl, preserved);
+
   const tasks = [...tasksByUrl.values()];
   await replaceMonthSection(sheets, testerTab, monthLabel, testerRole, tasks, logger);
   await formatSection({
@@ -121,6 +136,43 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<void> {
     tabName: testerTab,
     monthLabel,
   });
+}
+
+async function collectPreservedTesterSectionRows(
+  sheets: SheetsClient,
+  testerTab: string,
+  monthLabel: string,
+  soleTesterPagesById: Map<string, NotionPage>,
+  rebuiltTasksByUrl: Map<string, TaskEntry>,
+): Promise<TaskEntry[]> {
+  const rows = await sheets.readTabValues(testerTab);
+  const sectionRows = collectTaskRows(rows, monthLabel);
+
+  const preserved: TaskEntry[] = [];
+  for (const row of sectionRows) {
+    const url = (row[COLUMN_INDEX.link] ?? "").trim();
+    if (!url) continue;
+    if (rebuiltTasksByUrl.has(url)) continue;
+
+    const normalizedPageId = extractPageIdFromUrl(url);
+    if (!normalizedPageId) continue;
+
+    const page = soleTesterPagesById.get(normalizedPageId);
+    if (!page) continue;
+    if (deliveredDateOf(page).length > 0) continue;
+
+    preserved.push({
+      title: row[COLUMN_INDEX.title] ?? "",
+      notionUrl: url,
+      app: row[COLUMN_INDEX.app] ?? "",
+      status: row[COLUMN_INDEX.status] ?? "",
+      point: (row[COLUMN_INDEX.point] ?? "").trim(),
+      assignees: row[COLUMN_INDEX.assignees] ?? "",
+      followers: row[COLUMN_INDEX.followers] ?? "",
+      source: "(preserved)",
+    });
+  }
+  return preserved;
 }
 
 function collectTaskRows(rows: string[][], monthLabel: string): string[][] {
@@ -218,8 +270,9 @@ async function replaceMonthSection(
     headerRow[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, writeStartRow);
   }
 
-  const taskRowsAsArrays = tasks.map((task) => {
+  const taskRowsAsArrays = tasks.map((task, index) => {
     const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
+    row[COLUMN_INDEX.month] = String(index + 1);
     row[COLUMN_INDEX.title] = task.title;
     row[COLUMN_INDEX.link] = task.notionUrl;
     row[COLUMN_INDEX.app] = task.app;
