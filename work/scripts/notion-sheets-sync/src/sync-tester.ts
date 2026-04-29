@@ -5,6 +5,7 @@ import type { Logger } from "./logger.ts";
 import type { Member } from "./util/members.ts";
 import {
   COLUMN_INDEX,
+  MONTH_HEADER_PATTERN,
   SHEET_COLUMN_COUNT,
   columnLetter,
   isSyncableStatus,
@@ -198,7 +199,7 @@ function collectTaskRows(rows: string[][], monthLabel: string): string[][] {
       continue;
     }
     if (!inSection) continue;
-    if (cellA && cellA !== monthLabel) break;
+    if (MONTH_HEADER_PATTERN.test(cellA) && cellA !== monthLabel) break;
     const title = (rows[i]?.[COLUMN_INDEX.title] ?? "").toString().trim();
     if (!title) continue;
     taskRows.push((rows[i] ?? []).map((cell) => (cell ?? "").toString()));
