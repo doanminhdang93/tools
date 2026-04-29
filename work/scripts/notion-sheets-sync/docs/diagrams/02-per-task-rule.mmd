@@ -1,0 +1,20 @@
+flowchart TD
+    START(["1 page trong Notion DB"]) --> C1{"Member là Assignee?<br/>(Follower chỉ hiển thị,<br/>không quyết định sync)"}
+    C1 -->|"no"| SKIP["Bỏ qua"]
+    C1 -->|"yes"| C2{"Status syncable?<br/>(Done, Testing, Reviewing,<br/>Wait To Live, …)"}
+    C2 -->|"no"| SKIP
+    C2 -->|"yes"| C4{"created_time<br/>nằm trong tháng target?<br/>(VN time)"}
+    C4 -->|"no — task tháng cũ chuyển sang"| NOTE["Workaround:<br/>tạo task mới<br/>trong tháng target"]
+    C4 -->|"yes"| ROW["Build row<br/>(STT, link, title, point...)"]
+
+    ROW --> P1{"Sheet point > 0<br/>và khác Notion point?"}
+    P1 -->|"yes"| PUSH["Push sheet point<br/>→ Notion (sheet thắng)"]
+    P1 -->|"no"| KEEP["Giữ point từ Notion"]
+    PUSH --> WRITE
+    KEEP --> WRITE["Ghi row vào sheet tab"]
+
+    WRITE --> A2["A2 preserve:<br/>các row đã có trong tab<br/>nhưng không nằm trong batch này<br/>→ giữ nguyên (không xoá)"]
+
+    style SKIP fill:#fee
+    style NOTE fill:#ffe
+    style PUSH fill:#efe

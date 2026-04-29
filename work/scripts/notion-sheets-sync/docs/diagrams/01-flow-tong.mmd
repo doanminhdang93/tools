@@ -1,0 +1,25 @@
+flowchart LR
+    subgraph TRG["Trigger (3 cách kích hoạt)"]
+        T1["Apps Script menu trong Sheet<br/>(Sync this month / pick month)"]
+        T2["GitHub Actions<br/>workflow_dispatch"]
+        T3["Local CLI<br/>npm run sync"]
+    end
+
+    T1 -->|"gh repository_dispatch"| ENG
+    T2 --> ENG
+    T3 --> ENG
+
+    subgraph ENG_BOX["Sync engine (Node + tsx)"]
+        ENG["Load config<br/>(.token.env, tabs.config.ts)"]
+        ENG --> MEM["Read Members tab<br/>từ Google Sheet"]
+        MEM --> NOT["Fetch Notion pages<br/>created_time ≥ ngày 1 tháng target<br/>(VN time)"]
+        NOT --> LOOP["Loop từng member<br/>(tester chạy cuối)"]
+        LOOP --> TAB["Sync 1 tab<br/>→ xem Diagram 2"]
+        TAB --> MORE{"Còn tab?"}
+        MORE -->|"yes — sleep 15s<br/>(Sheets rate limit)"| LOOP
+        MORE -->|"no"| SUM["Build summary"]
+    end
+
+    SUM --> O1["Slack notify"]
+    TAB --> O2["Google Sheet<br/>tab cập nhật"]
+    TAB --> O3["Notion DB<br/>point auto-update<br/>(nếu sheet khác Notion)"]
