@@ -58,13 +58,6 @@ export function createdTimeOf(page: NotionPage): string {
   return (createdProperty as { created_time?: string }).created_time ?? "";
 }
 
-import { isSyncableStatus } from "../constants.ts";
-
-export function deliveredDateOf(page: NotionPage): string {
-  if (!isSyncableStatus(statusOf(page))) return "";
-  return page.last_edited_time;
-}
-
 export function assigneeNamesOf(page: NotionPage): string[] {
   return peopleNamesFromProperty(page.properties["Assignee"]);
 }

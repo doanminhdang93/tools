@@ -12,7 +12,6 @@ function pageWith(options: {
 }): NotionPage {
   return {
     id: options.id,
-    last_edited_time: "",
     properties: {
       Assignee: {
         type: "people",
@@ -68,8 +67,8 @@ describe("collectAssigneeNames", () => {
 
   it("ignores pages where Assignee is missing or empty", () => {
     const pages: NotionPage[] = [
-      { id: "a", last_edited_time: "", properties: {} },
-      { id: "b", last_edited_time: "", properties: { Assignee: { type: "people", people: [] } } },
+      { id: "a", properties: {} },
+      { id: "b", properties: { Assignee: { type: "people", people: [] } } },
     ];
     expect(collectAssigneeNames(pages).size).toBe(0);
   });

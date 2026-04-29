@@ -25,7 +25,7 @@ import {
   statusOf,
   tagNamesOf,
   pointNumberOf,
-  deliveredDateOf,
+  createdTimeOf,
   assigneeNamesOf,
   followerNamesOf,
   storyPointNumberOf,
@@ -87,7 +87,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const windowEnd = windowEndOverride ?? defaultWindowEnd;
 
   logger.info(
-    `[${tabName}] syncing ${targetMonthLabel} (Delivered Date window ${windowStart.toISOString()} → ${windowEnd.toISOString()}) for ${assigneeName}`,
+    `[${tabName}] syncing ${targetMonthLabel} (created_time window ${windowStart.toISOString()} → ${windowEnd.toISOString()}) for ${assigneeName}`,
   );
 
   const existingSection = findSection(parsed, targetMonthLabel);
@@ -99,13 +99,13 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     windowEnd,
     pageIdsInOtherSections,
   );
-  candidatePages.sort(byDeliveredDateAscending);
+  candidatePages.sort(byCreatedTimeAscending);
 
   const preservedRows = collectPreservedExistingRows(existingSection, candidatePages, pageIdsInOtherSections);
 
   logSyncedTasks(logger, tabName, candidatePages, pointSource);
   if (preservedRows.length > 0) {
-    logger.info(`[${tabName}] preserved ${preservedRows.length} existing row(s) without Delivered Date`);
+    logger.info(`[${tabName}] preserved ${preservedRows.length} existing row(s) outside candidate filter`);
   }
 
   const existingRowByPageId = indexTaskRowsByPageId(existingSection);
@@ -212,11 +212,11 @@ function pagesInCandidateWindow(
   return assignedPages.filter((page) => {
     if (!isSyncableStatus(statusOf(page))) return false;
 
-    const deliveredIso = deliveredDateOf(page);
-    if (!deliveredIso) return false;
+    const createdIso = createdTimeOf(page);
+    if (!createdIso) return false;
 
-    const deliveredAt = new Date(deliveredIso);
-    if (deliveredAt < windowStart || deliveredAt > windowEnd) return false;
+    const createdAt = new Date(createdIso);
+    if (createdAt < windowStart || createdAt > windowEnd) return false;
 
     const normalizedPageId = normalizeNotionPageId(page.id);
     if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;
@@ -266,8 +266,8 @@ function collectPageIdsOutsideCurrentSection(
   return pageIds;
 }
 
-function byDeliveredDateAscending(left: NotionPage, right: NotionPage): number {
-  return deliveredDateOf(left).localeCompare(deliveredDateOf(right));
+function byCreatedTimeAscending(left: NotionPage, right: NotionPage): number {
+  return createdTimeOf(left).localeCompare(createdTimeOf(right));
 }
 
 function indexTaskRowsByPageId(section: MonthSection | undefined): Map<string, string[]> {
@@ -361,10 +361,10 @@ function logSyncedTasks(logger: Logger, tabName: string, pages: NotionPage[], po
 
   for (const page of pages) {
     const shortId = page.id.slice(0, 8);
-    const deliveredIso = deliveredDateOf(page);
+    const createdIso = createdTimeOf(page);
     const point = pointNumberOf(page, pointSource);
     logger.info(
-      `[${tabName}]   ${shortId} • ${point} pts • ${deliveredIso.slice(0, 10)} • ${titleOf(page)}`,
+      `[${tabName}]   ${shortId} • ${point} pts • ${createdIso.slice(0, 10)} • ${titleOf(page)}`,
     );
   }
 }

@@ -20,9 +20,8 @@ import {
   sizeCardNumberOf,
   assigneeNamesOf,
   followerNamesOf,
-  deliveredDateOf,
+  createdTimeOf,
 } from "./notion/fields.ts";
-import { extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
 import { firstInstantOfMonth, lastInstantOfMonth } from "./util/month.ts";
 import { formatSection } from "./format-section.ts";
 
@@ -94,19 +93,17 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
   const windowEnd = lastInstantOfMonth(monthLabel);
 
   const myPages = filterByAssignee(allPages, testerNotionName);
-  const soleTesterPagesById = new Map<string, NotionPage>();
   let soloAdded = 0;
   for (const page of myPages) {
     if (!isSyncableStatus(statusOf(page))) continue;
     const assignees = assigneeNamesOf(page);
     if (assignees.length !== 1) continue;
     if (assignees[0] !== testerNotionName) continue;
-    soleTesterPagesById.set(normalizeNotionPageId(page.id), page);
 
-    const deliveredIso = deliveredDateOf(page);
-    if (!deliveredIso) continue;
-    const deliveredAt = new Date(deliveredIso);
-    if (deliveredAt < windowStart || deliveredAt > windowEnd) continue;
+    const createdIso = createdTimeOf(page);
+    if (!createdIso) continue;
+    const createdAt = new Date(createdIso);
+    if (createdAt < windowStart || createdAt > windowEnd) continue;
 
     const url = `https://www.notion.so/${page.id.replace(/-/g, "")}`;
     if (tasksByUrl.has(url)) continue;
@@ -128,11 +125,10 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     sheets,
     testerTab,
     monthLabel,
-    soleTesterPagesById,
     tasksByUrl,
   );
   if (preservedTesterRows.length > 0) {
-    logger.info(`[${testerTab}] preserved ${preservedTesterRows.length} existing row(s) without Delivered Date`);
+    logger.info(`[${testerTab}] preserved ${preservedTesterRows.length} existing row(s) outside candidate filter`);
   }
   for (const preserved of preservedTesterRows) tasksByUrl.set(preserved.notionUrl, preserved);
 
@@ -156,7 +152,6 @@ async function collectPreservedTesterSectionRows(
   sheets: SheetsClient,
   testerTab: string,
   monthLabel: string,
-  soleTesterPagesById: Map<string, NotionPage>,
   rebuiltTasksByUrl: Map<string, TaskEntry>,
 ): Promise<TaskEntry[]> {
   const rows = await sheets.readTabValues(testerTab);
@@ -167,13 +162,6 @@ async function collectPreservedTesterSectionRows(
     const url = (row[COLUMN_INDEX.link] ?? "").trim();
     if (!url) continue;
     if (rebuiltTasksByUrl.has(url)) continue;
-
-    const normalizedPageId = extractPageIdFromUrl(url);
-    if (!normalizedPageId) continue;
-
-    const page = soleTesterPagesById.get(normalizedPageId);
-    if (!page) continue;
-    if (deliveredDateOf(page).length > 0) continue;
 
     preserved.push({
       title: row[COLUMN_INDEX.title] ?? "",

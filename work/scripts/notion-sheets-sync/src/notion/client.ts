@@ -2,7 +2,6 @@ import { Client } from "@notionhq/client";
 
 export interface NotionPage {
   id: string;
-  last_edited_time: string;
   properties: Record<string, { type: string; [key: string]: unknown }>;
 }
 
@@ -41,7 +40,6 @@ export async function fetchAllPages(
       if (!("properties" in result)) continue;
       collected.push({
         id: result.id,
-        last_edited_time: (result as { last_edited_time?: string }).last_edited_time ?? "",
         properties: result.properties as NotionPage["properties"],
       });
     }
