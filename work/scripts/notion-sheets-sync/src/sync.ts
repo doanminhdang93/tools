@@ -33,14 +33,9 @@ import {
   sizeCardNumberOf,
   type PointSource,
 } from "./notion/fields.ts";
-import {
-  pagesAsReviewer,
-  totalReviewPoints,
-  isLegacyReviewNote,
-  buildReviewPointFormula,
-  type PageRowLocation,
-} from "./review-points.ts";
 import type { Logger } from "./logger.ts";
+
+const LEGACY_REVIEW_NOTE_PATTERN = /^Review \(Sublead\)/;
 
 export interface SyncTabArgs {
   tabName: string;
@@ -54,7 +49,6 @@ export interface SyncTabArgs {
   role?: string;
   windowEndOverride?: Date;
   notionClient?: NotionClient;
-  pageIdToRowMap?: Map<string, PageRowLocation>;
 }
 
 export interface SyncTabResult {
@@ -79,7 +73,6 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     role = "",
     windowEndOverride,
     notionClient,
-    pageIdToRowMap,
   } = args;
   const pointRate = pointRateForRole(role);
 
@@ -110,13 +103,6 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   candidatePages.sort(byCreatedTimeAscending);
 
   const isReviewEligible = REVIEW_ELIGIBLE_ROLES.has(role.trim().toLowerCase());
-  const reviewerPages = isReviewEligible
-    ? pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections)
-    : [];
-  const reviewPointTotal = totalReviewPoints(reviewerPages);
-  const reviewPointFormula = pageIdToRowMap
-    ? buildReviewPointFormula(reviewerPages, pageIdToRowMap, columnLetter(COLUMN_INDEX.point))
-    : null;
 
   const preservedRows = collectPreservedExistingRows(
     existingSection,
@@ -125,11 +111,6 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   );
 
   logSyncedTasks(logger, tabName, candidatePages, pointSource);
-  if (reviewerPages.length > 0) {
-    logger.info(
-      `[${tabName}] review points (follower-only) — ${reviewerPages.length} task(s), total ${reviewPointTotal}`,
-    );
-  }
   if (preservedRows.length > 0) {
     logger.info(`[${tabName}] preserved ${preservedRows.length} existing row(s) outside candidate filter`);
   }
@@ -162,16 +143,22 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   });
 
   const allTaskRows = [...preservedRows, ...newTaskRows];
+
+  const writeStartRow = existingSection
+    ? existingSection.headerRowIndex
+    : parsed.totalRowCount + 2;
+
+  const pointColLetter = columnLetter(COLUMN_INDEX.point);
   for (let index = 0; index < allTaskRows.length; index++) {
     while (allTaskRows[index].length < SHEET_COLUMN_COUNT) {
       allTaskRows[index].push("");
     }
     allTaskRows[index][COLUMN_INDEX.month] = String(index + 1);
+    if (isReviewEligible) {
+      const sheetRow = writeStartRow + 1 + index;
+      allTaskRows[index][COLUMN_INDEX.reviewPoint] = `=${pointColLetter}${sheetRow}*0.2`;
+    }
   }
-
-  const writeStartRow = existingSection
-    ? existingSection.headerRowIndex
-    : parsed.totalRowCount + 2;
 
   const totalPoints = allTaskRows.reduce(
     (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
@@ -183,7 +170,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     writeStartRow,
     allTaskRows.length,
     role,
-    reviewPointFormula ?? (reviewPointTotal > 0 ? String(reviewPointTotal) : ""),
+    isReviewEligible,
   );
 
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...allTaskRows]);
@@ -273,7 +260,7 @@ function collectPreservedExistingRows(
   const preserved: string[][] = [];
   for (const taskRow of existingSection.taskRows) {
     const note = taskRow[COLUMN_INDEX.note] ?? "";
-    if (isLegacyReviewNote(note)) continue;
+    if (LEGACY_REVIEW_NOTE_PATTERN.test(note)) continue;
 
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const normalizedPageId = extractPageIdFromUrl(url);
@@ -351,7 +338,7 @@ function collectSheetPointsByPageId(section: MonthSection | undefined): Map<stri
 
   for (const taskRow of section.taskRows) {
     const note = taskRow[COLUMN_INDEX.note] ?? "";
-    if (isLegacyReviewNote(note)) continue;
+    if (LEGACY_REVIEW_NOTE_PATTERN.test(note)) continue;
 
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const pageId = extractPageIdFromUrl(url);
@@ -385,20 +372,15 @@ function buildMonthHeaderRow(
   headerRowIndex: number,
   taskRowCount: number,
   role: string,
-  reviewPointCellValue: string,
+  isReviewEligible: boolean,
 ): string[] {
   const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
   row[COLUMN_INDEX.month] = monthLabel;
-  const hasReview = reviewPointCellValue.length > 0;
-  if (hasReview) {
-    row[COLUMN_INDEX.reviewPoint] = reviewPointCellValue;
-  }
 
   if (taskRowCount === 0) {
     row[COLUMN_INDEX.point] = "0";
-    row[COLUMN_INDEX.money] = hasReview
-      ? moneyFormulaForRole(role, columnLetter(COLUMN_INDEX.point), headerRowIndex)
-      : "0";
+    row[COLUMN_INDEX.money] = "0";
+    if (isReviewEligible) row[COLUMN_INDEX.reviewPoint] = "0";
     return row;
   }
 
@@ -407,6 +389,10 @@ function buildMonthHeaderRow(
   const pointCol = columnLetter(COLUMN_INDEX.point);
   row[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
   row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowIndex);
+  if (isReviewEligible) {
+    const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
+    row[COLUMN_INDEX.reviewPoint] = `=SUM(${reviewCol}${firstTaskRow}:${reviewCol}${lastTaskRow})`;
+  }
   return row;
 }
 
