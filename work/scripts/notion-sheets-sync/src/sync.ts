@@ -33,9 +33,15 @@ import {
   sizeCardNumberOf,
   type PointSource,
 } from "./notion/fields.ts";
+import {
+  pagesAsReviewer,
+  buildCrossTabReviewFormula,
+  type PageRowLocation,
+} from "./review-points.ts";
 import type { Logger } from "./logger.ts";
 
 const LEGACY_REVIEW_NOTE_PATTERN = /^Review \(Sublead\)/;
+const SUBLEAD_ROLE = "sublead";
 
 export interface SyncTabArgs {
   tabName: string;
@@ -49,6 +55,7 @@ export interface SyncTabArgs {
   role?: string;
   windowEndOverride?: Date;
   notionClient?: NotionClient;
+  pageIdToRowMap?: Map<string, PageRowLocation>;
 }
 
 export interface SyncTabResult {
@@ -73,6 +80,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     role = "",
     windowEndOverride,
     notionClient,
+    pageIdToRowMap,
   } = args;
   const pointRate = pointRateForRole(role);
 
@@ -102,7 +110,17 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   );
   candidatePages.sort(byCreatedTimeAscending);
 
-  const isReviewEligible = REVIEW_ELIGIBLE_ROLES.has(role.trim().toLowerCase());
+  const normalizedRole = role.trim().toLowerCase();
+  const isReviewEligible = REVIEW_ELIGIBLE_ROLES.has(normalizedRole);
+  const isSublead = normalizedRole === SUBLEAD_ROLE;
+
+  const subleadHeaderFormula = isSublead && pageIdToRowMap
+    ? buildCrossTabReviewFormula(
+        pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections),
+        pageIdToRowMap,
+        columnLetter(COLUMN_INDEX.point),
+      )
+    : null;
 
   const preservedRows = collectPreservedExistingRows(
     existingSection,
@@ -171,6 +189,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     allTaskRows.length,
     role,
     isReviewEligible,
+    subleadHeaderFormula,
   );
 
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...allTaskRows]);
@@ -373,6 +392,7 @@ function buildMonthHeaderRow(
   taskRowCount: number,
   role: string,
   isReviewEligible: boolean,
+  subleadHeaderFormula: string | null,
 ): string[] {
   const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
   row[COLUMN_INDEX.month] = monthLabel;
@@ -380,7 +400,9 @@ function buildMonthHeaderRow(
   if (taskRowCount === 0) {
     row[COLUMN_INDEX.point] = "0";
     row[COLUMN_INDEX.money] = "0";
-    if (isReviewEligible) row[COLUMN_INDEX.reviewPoint] = "0";
+    if (isReviewEligible) {
+      row[COLUMN_INDEX.reviewPoint] = subleadHeaderFormula ?? "0";
+    }
     return row;
   }
 
@@ -390,8 +412,12 @@ function buildMonthHeaderRow(
   row[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
   row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowIndex);
   if (isReviewEligible) {
-    const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
-    row[COLUMN_INDEX.reviewPoint] = `=SUM(${reviewCol}${firstTaskRow}:${reviewCol}${lastTaskRow})`;
+    if (subleadHeaderFormula) {
+      row[COLUMN_INDEX.reviewPoint] = subleadHeaderFormula;
+    } else {
+      const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
+      row[COLUMN_INDEX.reviewPoint] = `=SUM(${reviewCol}${firstTaskRow}:${reviewCol}${lastTaskRow})`;
+    }
   }
   return row;
 }

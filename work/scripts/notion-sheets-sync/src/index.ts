@@ -11,6 +11,10 @@ import { currentMonthLabel, firstInstantOfMonth } from "./util/month.ts";
 import { overrides } from "../tabs.config.ts";
 import { readMembers, type Member } from "./util/members.ts";
 import type { PointSource } from "./notion/fields.ts";
+import type { PageRowLocation } from "./review-points.ts";
+import { COLUMN_INDEX } from "./constants.ts";
+import { extractPageIdFromUrl } from "./notion/url.ts";
+import type { SheetsClient } from "./sheets/client.ts";
 
 const ROOT_TOKEN_ENV_PATH = resolve(import.meta.dirname, "../../../../.token.env");
 loadDotenv({ path: ROOT_TOKEN_ENV_PATH });
@@ -97,6 +101,25 @@ function notionDisplayNameFor(member: Member): string {
   return reverse?.[0] ?? member.fullName;
 }
 
+async function buildPageIdToRowMap(
+  members: Member[],
+  sheets: SheetsClient,
+): Promise<Map<string, PageRowLocation>> {
+  const map = new Map<string, PageRowLocation>();
+  for (const member of members) {
+    const rows = await sheets.readTabValues(member.tabName);
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const link = (rows[rowIndex]?.[COLUMN_INDEX.link] ?? "").trim();
+      const pageId = extractPageIdFromUrl(link);
+      if (!pageId) continue;
+      if (!map.has(pageId)) {
+        map.set(pageId, { tabName: member.tabName, row: rowIndex + 1 });
+      }
+    }
+  }
+  return map;
+}
+
 function targetSortOrder(role: string): number {
   const normalized = role.trim().toLowerCase();
   if (normalized === TESTER_ROLE) return 2;
@@ -149,10 +172,18 @@ async function main(): Promise<void> {
   const successes: SyncedSummary[] = [];
   const SLEEP_BETWEEN_TABS_MS = 15000;
 
+  let pageIdToRowMap: Map<string, PageRowLocation> | undefined;
+
   for (let memberIndex = 0; memberIndex < ordered.length; memberIndex++) {
     const member = ordered[memberIndex];
     const role = member.role.trim().toLowerCase();
     const notionName = notionDisplayNameFor(member);
+
+    if (role === SUBLEAD_ROLE && !pageIdToRowMap) {
+      logger.info("Building pageId → row map for Sublead cross-tab review formulas...");
+      pageIdToRowMap = await buildPageIdToRowMap(members, sheets);
+      logger.info(`  mapped ${pageIdToRowMap.size} pages across ${members.length} tabs`);
+    }
 
     try {
       let result: SyncTabResult | SyncTesterResult;
@@ -180,6 +211,7 @@ async function main(): Promise<void> {
           pointSource,
           role: member.role,
           notionClient,
+          pageIdToRowMap,
         });
       }
       successes.push({
