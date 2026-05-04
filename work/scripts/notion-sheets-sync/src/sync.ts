@@ -8,7 +8,6 @@ import {
   pointRateForRole,
   moneyFormulaForRole,
   SHEET_COLUMN_COUNT,
-  SHEET_COLUMN_HEADERS,
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
   REVIEW_ELIGIBLE_ROLES,
@@ -17,6 +16,7 @@ import {
   toSheetApp,
   toSheetStatus,
 } from "./constants.ts";
+import { migrateLayoutIfNeeded } from "./util/sheet-layout-migration.ts";
 import { firstInstantOfMonth } from "./util/month.ts";
 import { resolveTargetMonthLabel } from "./resolve-target.ts";
 import { formatSection } from "./format-section.ts";
@@ -75,9 +75,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   } = args;
   const pointRate = pointRateForRole(role);
 
-  await sheets.writeRange(tabName, 1, [[...SHEET_COLUMN_HEADERS]]);
-
-  const existingRows = await sheets.readTabValues(tabName);
+  const rawRows = await sheets.readTabValues(tabName);
+  const existingRows = await migrateLayoutIfNeeded(tabName, rawRows, sheets, logger);
   const parsed = parseTab(existingRows);
   const columnABackgrounds = await sheets.readColumnABackgrounds(tabName);
 

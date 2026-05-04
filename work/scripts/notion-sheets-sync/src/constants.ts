@@ -20,7 +20,7 @@ export function moneyFormulaForRole(
   if (normalizedRole === "tester") {
     return `=${pointCol}${headerRowOneBased}*${TESTER_POINT_RATIO}*${pointRate}`;
   }
-  if (REVIEW_ELIGIBLE_ROLES.has(normalizedRole)) {
+  if (normalizedRole === "sublead") {
     const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
     return `=(${pointCol}${headerRowOneBased}+${reviewCol}${headerRowOneBased})*${pointRate}`;
   }
@@ -34,11 +34,11 @@ export const SHEET_COLUMN_HEADERS = [
   "App",
   "Status",
   "Point",
+  "Review point",
   "Money",
   "Assignees",
   "Followers",
   "Note",
-  "Review point",
 ] as const;
 
 export const SHEET_COLUMN_COUNT = SHEET_COLUMN_HEADERS.length;
@@ -50,11 +50,11 @@ export const COLUMN_INDEX = {
   app: 3,
   status: 4,
   point: 5,
-  money: 6,
-  assignees: 7,
-  followers: 8,
-  note: 9,
-  reviewPoint: 10,
+  reviewPoint: 6,
+  money: 7,
+  assignees: 8,
+  followers: 9,
+  note: 10,
 } as const;
 
 export const USER_OWNED_COLUMNS = [COLUMN_INDEX.note] as const;

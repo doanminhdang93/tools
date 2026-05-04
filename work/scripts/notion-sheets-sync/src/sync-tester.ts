@@ -23,6 +23,7 @@ import {
   createdTimeOf,
 } from "./notion/fields.ts";
 import { firstInstantOfMonth } from "./util/month.ts";
+import { readMigratedTabValues } from "./util/sheet-layout-migration.ts";
 import { formatSection } from "./format-section.ts";
 
 const COASSIGNEE_ROLES = new Set(["developer", "sublead", "po", "designer"]);
@@ -67,7 +68,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
   const tasksByUrl = new Map<string, TaskEntry>();
 
   for (const dev of coassigneeMembers) {
-    const rows = await sheets.readTabValues(dev.tabName);
+    const rows = await readMigratedTabValues(sheets, dev.tabName, logger);
     for (const taskRow of collectTaskRows(rows, monthLabel)) {
       const assigneeList = (taskRow[COLUMN_INDEX.assignees] ?? "")
         .split(",")
@@ -126,6 +127,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     testerTab,
     monthLabel,
     tasksByUrl,
+    logger,
   );
   if (preservedTesterRows.length > 0) {
     logger.info(`[${testerTab}] preserved ${preservedTesterRows.length} existing row(s) outside candidate filter`);
@@ -153,8 +155,9 @@ async function collectPreservedTesterSectionRows(
   testerTab: string,
   monthLabel: string,
   rebuiltTasksByUrl: Map<string, TaskEntry>,
+  logger: Logger,
 ): Promise<TaskEntry[]> {
-  const rows = await sheets.readTabValues(testerTab);
+  const rows = await readMigratedTabValues(sheets, testerTab, logger);
   const sectionRows = collectTaskRows(rows, monthLabel);
 
   const preserved: TaskEntry[] = [];
@@ -211,7 +214,7 @@ async function replaceMonthSection(
   }
   const currentRowCount = sheetMeta?.properties?.gridProperties?.rowCount ?? 1000;
 
-  const existingRows = await sheets.readTabValues(tabName);
+  const existingRows = await readMigratedTabValues(sheets, tabName, logger);
   let headerZeroBased = -1;
   let nextSectionZeroBased = existingRows.length;
   for (let i = 0; i < existingRows.length; i++) {
@@ -243,7 +246,7 @@ async function replaceMonthSection(
     logger.info(`[${tabName}] cleared old "${monthLabel}" section (${nextSectionZeroBased - headerZeroBased} rows)`);
   }
 
-  const refreshedRows = await sheets.readTabValues(tabName);
+  const refreshedRows = await readMigratedTabValues(sheets, tabName, logger);
   const writeStartRow = refreshedRows.length + 2;
   const rowsNeeded = writeStartRow + tasks.length;
   if (rowsNeeded > currentRowCount) {
