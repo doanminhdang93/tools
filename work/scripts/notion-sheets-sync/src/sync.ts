@@ -35,8 +35,9 @@ import {
 } from "./notion/fields.ts";
 import {
   pagesAsReviewer,
-  buildCrossTabReviewFormula,
-  type PageRowLocation,
+  relatedDevTabsForReviewer,
+  buildSubleadReviewFormulaFromDevTotals,
+  type MemberRoleInfo,
 } from "./review-points.ts";
 import type { Logger } from "./logger.ts";
 
@@ -55,7 +56,8 @@ export interface SyncTabArgs {
   role?: string;
   windowEndOverride?: Date;
   notionClient?: NotionClient;
-  pageIdToRowMap?: Map<string, PageRowLocation>;
+  tabHeaderRowMap?: Map<string, number>;
+  memberByNotionName?: Map<string, MemberRoleInfo>;
 }
 
 export interface SyncTabResult {
@@ -80,7 +82,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     role = "",
     windowEndOverride,
     notionClient,
-    pageIdToRowMap,
+    tabHeaderRowMap,
+    memberByNotionName,
   } = args;
   const pointRate = pointRateForRole(role);
 
@@ -115,10 +118,13 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const isReviewEligible = REVIEW_ELIGIBLE_ROLES.has(normalizedRole);
   const isSublead = normalizedRole === SUBLEAD_ROLE;
 
-  const subleadHeaderFormula = isSublead && pageIdToRowMap
-    ? buildCrossTabReviewFormula(
-        pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, now, pageIdsInOtherSections),
-        pageIdToRowMap,
+  const subleadHeaderFormula = isSublead && tabHeaderRowMap && memberByNotionName
+    ? buildSubleadReviewFormulaFromDevTotals(
+        relatedDevTabsForReviewer(
+          pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, now, pageIdsInOtherSections),
+          memberByNotionName,
+        ),
+        tabHeaderRowMap,
         columnLetter(COLUMN_INDEX.reviewPoint),
       )
     : null;

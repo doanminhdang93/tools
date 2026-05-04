@@ -11,9 +11,7 @@ import { currentMonthLabel, firstInstantOfMonth } from "./util/month.ts";
 import { overrides } from "../tabs.config.ts";
 import { readMembers, type Member } from "./util/members.ts";
 import type { PointSource } from "./notion/fields.ts";
-import type { PageRowLocation } from "./review-points.ts";
-import { COLUMN_INDEX } from "./constants.ts";
-import { extractPageIdFromUrl } from "./notion/url.ts";
+import type { MemberRoleInfo } from "./review-points.ts";
 import { parseTab, findSection } from "./sheets/parser.ts";
 import type { SheetsClient } from "./sheets/client.ts";
 
@@ -102,27 +100,26 @@ function notionDisplayNameFor(member: Member): string {
   return reverse?.[0] ?? member.fullName;
 }
 
-async function buildPageIdToRowMap(
+async function buildTabSectionHeaderMap(
   members: Member[],
   sheets: SheetsClient,
   targetMonthLabel: string,
-): Promise<Map<string, PageRowLocation>> {
-  const map = new Map<string, PageRowLocation>();
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
   for (const member of members) {
     const rows = await sheets.readTabValues(member.tabName);
     const parsed = parseTab(rows);
     const section = findSection(parsed, targetMonthLabel);
     if (!section) continue;
-    for (let taskIndex = 0; taskIndex < section.taskRows.length; taskIndex++) {
-      const link = (section.taskRows[taskIndex][COLUMN_INDEX.link] ?? "").trim();
-      const pageId = extractPageIdFromUrl(link);
-      if (!pageId) continue;
-      if (map.has(pageId)) continue;
-      map.set(pageId, {
-        tabName: member.tabName,
-        row: section.firstTaskRowIndex + taskIndex,
-      });
-    }
+    map.set(member.tabName, section.headerRowIndex);
+  }
+  return map;
+}
+
+function buildMemberByNotionName(members: Member[]): Map<string, MemberRoleInfo> {
+  const map = new Map<string, MemberRoleInfo>();
+  for (const member of members) {
+    map.set(notionDisplayNameFor(member), { tabName: member.tabName, role: member.role });
   }
   return map;
 }
@@ -179,17 +176,19 @@ async function main(): Promise<void> {
   const successes: SyncedSummary[] = [];
   const SLEEP_BETWEEN_TABS_MS = 15000;
 
-  let pageIdToRowMap: Map<string, PageRowLocation> | undefined;
+  let tabHeaderRowMap: Map<string, number> | undefined;
+  let memberByNotionName: Map<string, MemberRoleInfo> | undefined;
 
   for (let memberIndex = 0; memberIndex < ordered.length; memberIndex++) {
     const member = ordered[memberIndex];
     const role = member.role.trim().toLowerCase();
     const notionName = notionDisplayNameFor(member);
 
-    if (role === SUBLEAD_ROLE && !pageIdToRowMap) {
-      logger.info("Building pageId → row map for Sublead cross-tab review formulas...");
-      pageIdToRowMap = await buildPageIdToRowMap(members, sheets, monthLabel);
-      logger.info(`  mapped ${pageIdToRowMap.size} pages across ${members.length} tabs (scope: ${monthLabel})`);
+    if (role === SUBLEAD_ROLE && !tabHeaderRowMap) {
+      logger.info("Building tab → section-header map for Sublead review formulas...");
+      tabHeaderRowMap = await buildTabSectionHeaderMap(members, sheets, monthLabel);
+      memberByNotionName = buildMemberByNotionName(members);
+      logger.info(`  mapped ${tabHeaderRowMap.size} tabs with section "${monthLabel}"`);
     }
 
     try {
@@ -218,7 +217,8 @@ async function main(): Promise<void> {
           pointSource,
           role: member.role,
           notionClient,
-          pageIdToRowMap,
+          tabHeaderRowMap,
+          memberByNotionName,
         });
       }
       successes.push({

@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   pagesAsReviewer,
-  buildCrossTabReviewFormula,
-  type PageRowLocation,
+  relatedDevTabsForReviewer,
+  buildSubleadReviewFormulaFromDevTotals,
+  type MemberRoleInfo,
 } from "./review-points.ts";
 import type { NotionPage } from "./notion/client.ts";
 
@@ -107,38 +108,72 @@ describe("pagesAsReviewer", () => {
   });
 });
 
-describe("buildCrossTabReviewFormula", () => {
-  it("returns null for empty pages", () => {
-    expect(buildCrossTabReviewFormula([], new Map(), "G")).toBeNull();
+describe("relatedDevTabsForReviewer", () => {
+  const memberByNotionName = new Map<string, MemberRoleInfo>([
+    ["Lê Thạch Cương", { tabName: "CuongLT", role: "Developer" }],
+    ["Tuấn Dương Nguyễn", { tabName: "DuongNT", role: "Developer" }],
+    ["Dương Ngọc Lâm", { tabName: "LamDN", role: "PO" }],
+    ["Nguyễn Ngọc Anh", { tabName: "AnhNN", role: "Tester" }],
+  ]);
+
+  it("returns Dev tabs for assignees of follower-pages", () => {
+    const pages = [
+      pageWith({ id: "a", followers: ["DangDM"], assignees: ["Lê Thạch Cương"] }),
+    ];
+    expect([...relatedDevTabsForReviewer(pages, memberByNotionName)]).toEqual(["CuongLT"]);
   });
 
-  it("emits ROUND(sum of review-cell refs, 2) without re-multiplying by 0.2", () => {
-    const map = new Map<string, PageRowLocation>([
-      ["abc12345def012345678901234567890", { tabName: "DangDM", row: 8 }],
-      ["fed98765abc012345678901234567890", { tabName: "ChienNH", row: 12 }],
-    ]);
+  it("ignores assignees whose role is not Developer", () => {
     const pages = [
-      pageWith({ id: "abc12345-def0-1234-5678-901234567890" }),
-      pageWith({ id: "fed98765-abc0-1234-5678-901234567890" }),
+      pageWith({ id: "a", followers: ["DangDM"], assignees: ["Dương Ngọc Lâm", "Nguyễn Ngọc Anh"] }),
     ];
-    expect(buildCrossTabReviewFormula(pages, map, "G")).toBe(
-      "=ROUND(DangDM!G8+ChienNH!G12, 2)",
+    expect([...relatedDevTabsForReviewer(pages, memberByNotionName)]).toEqual([]);
+  });
+
+  it("collects multiple Dev tabs from different pages and Co-Assignees", () => {
+    const pages = [
+      pageWith({ id: "a", followers: ["DangDM"], assignees: ["Lê Thạch Cương", "Nguyễn Ngọc Anh"] }),
+      pageWith({ id: "b", followers: ["DangDM"], assignees: ["Tuấn Dương Nguyễn"] }),
+    ];
+    expect([...relatedDevTabsForReviewer(pages, memberByNotionName)].sort()).toEqual(
+      ["CuongLT", "DuongNT"],
     );
   });
 
-  it("returns null when no pages are mapped", () => {
-    const pages = [pageWith({ id: "abc12345-def0-1234-5678-901234567890" })];
-    expect(buildCrossTabReviewFormula(pages, new Map(), "G")).toBeNull();
+  it("ignores assignees not present in member map", () => {
+    const pages = [pageWith({ id: "a", followers: ["DangDM"], assignees: ["Unknown Person"] })];
+    expect([...relatedDevTabsForReviewer(pages, memberByNotionName)]).toEqual([]);
+  });
+});
+
+describe("buildSubleadReviewFormulaFromDevTotals", () => {
+  it("returns null for empty related-tabs set", () => {
+    expect(buildSubleadReviewFormulaFromDevTotals([], new Map(), "G")).toBeNull();
   });
 
-  it("skips unmapped pages", () => {
-    const map = new Map<string, PageRowLocation>([
-      ["abc12345def012345678901234567890", { tabName: "DangDM", row: 8 }],
+  it("emits ROUND(sum of section-header refs, 2) for each related Dev tab", () => {
+    const headers = new Map<string, number>([
+      ["CuongLT", 37],
+      ["DuongNT", 42],
     ]);
-    const pages = [
-      pageWith({ id: "abc12345-def0-1234-5678-901234567890" }),
-      pageWith({ id: "fed98765-abc0-1234-5678-901234567890" }),
-    ];
-    expect(buildCrossTabReviewFormula(pages, map, "G")).toBe("=ROUND(DangDM!G8, 2)");
+    const formula = buildSubleadReviewFormulaFromDevTotals(["CuongLT", "DuongNT"], headers, "G");
+    expect(formula).toBe("=ROUND(CuongLT!G37+DuongNT!G42, 2)");
+  });
+
+  it("dedups repeated tab names", () => {
+    const headers = new Map<string, number>([["CuongLT", 37]]);
+    const formula = buildSubleadReviewFormulaFromDevTotals(["CuongLT", "CuongLT"], headers, "G");
+    expect(formula).toBe("=ROUND(CuongLT!G37, 2)");
+  });
+
+  it("skips tabs without a section header in the target month", () => {
+    const headers = new Map<string, number>([["CuongLT", 37]]);
+    const formula = buildSubleadReviewFormulaFromDevTotals(["CuongLT", "DuongNT"], headers, "G");
+    expect(formula).toBe("=ROUND(CuongLT!G37, 2)");
+  });
+
+  it("returns null when none of the related tabs have a section header", () => {
+    const formula = buildSubleadReviewFormulaFromDevTotals(["CuongLT"], new Map(), "G");
+    expect(formula).toBeNull();
   });
 });
