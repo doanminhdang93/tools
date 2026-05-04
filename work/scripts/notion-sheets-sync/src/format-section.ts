@@ -189,24 +189,21 @@ export async function formatSection(args: FormatSectionArgs): Promise<void> {
     },
   });
 
-  const isSourceTab = tabName === SOURCE_TAB;
-  if (!isSourceTab) {
-    requests.push({
-      setDataValidation: {
-        range: {
-          sheetId,
-          startRowIndex: headerRowZeroBased,
-          endRowIndex: lastTaskRowZeroBased + 1,
-          startColumnIndex: COLUMN_INDEX.app,
-          endColumnIndex: COLUMN_INDEX.status + 1,
-        },
+  requests.push({
+    setDataValidation: {
+      range: {
+        sheetId,
+        startRowIndex: headerRowZeroBased,
+        endRowIndex: lastTaskRowZeroBased + 1,
+        startColumnIndex: COLUMN_INDEX.app,
+        endColumnIndex: COLUMN_INDEX.status + 1,
       },
-    });
-  }
+    },
+  });
 
   const taskFirstRowZeroBased = headerRowZeroBased + 1;
   const taskLastRowZeroBased = lastTaskRowZeroBased;
-  if (!isSourceTab && taskLastRowZeroBased >= taskFirstRowZeroBased) {
+  if (taskLastRowZeroBased >= taskFirstRowZeroBased) {
     await reportNewValidationValues(sheetsApi, spreadsheetId, rows, taskFirstRowZeroBased, taskLastRowZeroBased);
     requests.push({
       copyPaste: {
