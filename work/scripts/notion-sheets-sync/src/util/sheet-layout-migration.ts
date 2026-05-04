@@ -26,6 +26,9 @@ export async function migrateLayoutIfNeeded(
   }
 
   const header = rawRows[0] ?? [];
+  if (header[PO_LAYOUT_COLUMN_INDEX.taskType] === TASK_TYPE_HEADER_TEXT) {
+    return rawRows;
+  }
   if (header[COLUMN_INDEX.reviewPoint] === REVIEW_POINT_HEADER_TEXT) {
     return rawRows;
   }
