@@ -22,7 +22,7 @@ import {
   followerNamesOf,
   createdTimeOf,
 } from "./notion/fields.ts";
-import { firstInstantOfMonth } from "./util/month.ts";
+import { firstInstantOfMonth, lastInstantOfMonth, isInVietnamSameDay } from "./util/month.ts";
 import { readMigratedTabValues } from "./util/sheet-layout-migration.ts";
 import { formatSection } from "./format-section.ts";
 
@@ -91,7 +91,8 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
   logger.info(`[${testerTab}] from coassignee tabs: ${tasksByUrl.size} task(s)`);
 
   const windowStart = firstInstantOfMonth(monthLabel);
-  const windowEnd = new Date();
+  const windowEnd = lastInstantOfMonth(monthLabel);
+  const now = new Date();
 
   const myPages = filterByAssignee(allPages, testerNotionName);
   let soloAdded = 0;
@@ -104,7 +105,9 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     const createdIso = createdTimeOf(page);
     if (!createdIso) continue;
     const createdAt = new Date(createdIso);
-    if (createdAt < windowStart || createdAt > windowEnd) continue;
+    const inTargetMonth = createdAt >= windowStart && createdAt <= windowEnd;
+    const isTodayLateAddition = createdAt > windowEnd && isInVietnamSameDay(createdAt, now);
+    if (!inTargetMonth && !isTodayLateAddition) continue;
 
     const url = `https://www.notion.so/${page.id.replace(/-/g, "")}`;
     if (tasksByUrl.has(url)) continue;

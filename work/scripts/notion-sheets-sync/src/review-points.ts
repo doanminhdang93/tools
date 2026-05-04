@@ -7,6 +7,7 @@ import {
 } from "./notion/fields.ts";
 import { isSyncableStatus } from "./constants.ts";
 import { normalizeNotionPageId } from "./notion/url.ts";
+import { isInVietnamSameDay } from "./util/month.ts";
 
 export interface PageRowLocation {
   tabName: string;
@@ -18,6 +19,7 @@ export function pagesAsReviewer(
   reviewerName: string,
   windowStart: Date,
   windowEnd: Date,
+  now: Date,
   pageIdsAlreadyInOtherSections: Set<string>,
 ): NotionPage[] {
   return allPages.filter((page) => {
@@ -32,7 +34,9 @@ export function pagesAsReviewer(
     const createdIso = createdTimeOf(page);
     if (!createdIso) return false;
     const createdAt = new Date(createdIso);
-    if (createdAt < windowStart || createdAt > windowEnd) return false;
+    const inTargetMonth = createdAt >= windowStart && createdAt <= windowEnd;
+    const isTodayLateAddition = createdAt > windowEnd && isInVietnamSameDay(createdAt, now);
+    if (!inTargetMonth && !isTodayLateAddition) return false;
 
     const normalizedPageId = normalizeNotionPageId(page.id);
     if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;

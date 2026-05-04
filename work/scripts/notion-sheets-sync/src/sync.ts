@@ -17,7 +17,7 @@ import {
   toSheetStatus,
 } from "./constants.ts";
 import { migrateLayoutIfNeeded } from "./util/sheet-layout-migration.ts";
-import { firstInstantOfMonth } from "./util/month.ts";
+import { firstInstantOfMonth, lastInstantOfMonth, isInVietnamSameDay } from "./util/month.ts";
 import { resolveTargetMonthLabel } from "./resolve-target.ts";
 import { formatSection } from "./format-section.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
@@ -93,10 +93,10 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     targetMonthOverride ?? resolveTargetMonthLabel(parsed, columnABackgrounds, now);
 
   const windowStart = firstInstantOfMonth(targetMonthLabel);
-  const windowEnd = windowEndOverride ?? now;
+  const windowEnd = windowEndOverride ?? lastInstantOfMonth(targetMonthLabel);
 
   logger.info(
-    `[${tabName}] syncing ${targetMonthLabel} (created_time window ${windowStart.toISOString()} → ${windowEnd.toISOString()}) for ${assigneeName}`,
+    `[${tabName}] syncing ${targetMonthLabel} (created_time window ${windowStart.toISOString()} → ${windowEnd.toISOString()}, plus tasks created today VN) for ${assigneeName}`,
   );
 
   const existingSection = findSection(parsed, targetMonthLabel);
@@ -106,6 +106,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     assigneeName,
     windowStart,
     windowEnd,
+    now,
     pageIdsInOtherSections,
   );
   candidatePages.sort(byCreatedTimeAscending);
@@ -116,7 +117,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
 
   const subleadHeaderFormula = isSublead && pageIdToRowMap
     ? buildCrossTabReviewFormula(
-        pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections),
+        pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, now, pageIdsInOtherSections),
         pageIdToRowMap,
         columnLetter(COLUMN_INDEX.reviewPoint),
       )
@@ -192,14 +193,21 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     subleadHeaderFormula,
   );
 
-  await sheets.writeRange(tabName, writeStartRow, [headerRow, ...allTaskRows]);
-
   if (existingSection) {
-    const newLastRow = writeStartRow + allTaskRows.length;
-    if (newLastRow < existingSection.lastRowIndex) {
-      await sheets.clearRows(tabName, newLastRow + 1, existingSection.lastRowIndex);
+    const newRowCount = 1 + allTaskRows.length;
+    const oldRowCount = existingSection.lastRowIndex - existingSection.headerRowIndex + 1;
+    if (newRowCount > oldRowCount) {
+      const additional = newRowCount - oldRowCount;
+      logger.info(`[${tabName}] section grew by ${additional} row(s); inserting blanks below to keep later sections intact`);
+      await sheets.insertEmptyRows(tabName, existingSection.lastRowIndex + 1, additional);
+    } else if (newRowCount < oldRowCount) {
+      const removed = oldRowCount - newRowCount;
+      logger.info(`[${tabName}] section shrank by ${removed} row(s); deleting trailing rows so later sections move up`);
+      await sheets.deleteRows(tabName, writeStartRow + newRowCount, existingSection.lastRowIndex);
     }
   }
+
+  await sheets.writeRange(tabName, writeStartRow, [headerRow, ...allTaskRows]);
 
   await formatSection({
     sheetsApi: sheets.rawApi,
@@ -248,6 +256,7 @@ function pagesInCandidateWindow(
   assigneeName: string,
   windowStart: Date,
   windowEnd: Date,
+  now: Date,
   pageIdsAlreadyInOtherSections: Set<string>,
 ): NotionPage[] {
   const assignedPages = filterByAssignee(allPages, assigneeName);
@@ -258,7 +267,9 @@ function pagesInCandidateWindow(
     if (!createdIso) return false;
 
     const createdAt = new Date(createdIso);
-    if (createdAt < windowStart || createdAt > windowEnd) return false;
+    const inTargetMonth = createdAt >= windowStart && createdAt <= windowEnd;
+    const isTodayLateAddition = createdAt > windowEnd && isInVietnamSameDay(createdAt, now);
+    if (!inTargetMonth && !isTodayLateAddition) return false;
 
     const normalizedPageId = normalizeNotionPageId(page.id);
     if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;

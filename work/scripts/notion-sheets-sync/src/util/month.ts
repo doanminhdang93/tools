@@ -56,6 +56,16 @@ export function previousMonthLabel(monthLabel: string): string {
   return formatMonthLabel(month - 1, year);
 }
 
+export function isInVietnamSameDay(left: Date, right: Date): boolean {
+  const leftVN = toVietnamTime(left);
+  const rightVN = toVietnamTime(right);
+  return (
+    leftVN.getUTCFullYear() === rightVN.getUTCFullYear() &&
+    leftVN.getUTCMonth() === rightVN.getUTCMonth() &&
+    leftVN.getUTCDate() === rightVN.getUTCDate()
+  );
+}
+
 export function monthLabelToDate(monthLabel: string): Date {
   const match = monthLabel.match(/^(\d{1,2})\/(\d{4})$/);
   if (!match) throw new Error(`monthLabelToDate: bad label "${monthLabel}"`);
