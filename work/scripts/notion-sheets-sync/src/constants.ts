@@ -2,6 +2,8 @@ export const POINT_VALUE_VND = 45_000;
 
 export const TESTER_POINT_RATIO = 0.3;
 
+export const REVIEW_ELIGIBLE_ROLES = new Set(["developer", "sublead"]);
+
 export function pointRateForRole(role: string): number {
   const normalizedRole = role.trim().toLowerCase();
   if (normalizedRole === "po" || normalizedRole === "designer") return 22_000;
@@ -14,10 +16,15 @@ export function moneyFormulaForRole(
   headerRowOneBased: number,
 ): string {
   const pointRate = pointRateForRole(role);
-  const isTester = role.trim().toLowerCase() === "tester";
-  return isTester
-    ? `=${pointCol}${headerRowOneBased}*${TESTER_POINT_RATIO}*${pointRate}`
-    : `=${pointCol}${headerRowOneBased}*${pointRate}`;
+  const normalizedRole = role.trim().toLowerCase();
+  if (normalizedRole === "tester") {
+    return `=${pointCol}${headerRowOneBased}*${TESTER_POINT_RATIO}*${pointRate}`;
+  }
+  if (REVIEW_ELIGIBLE_ROLES.has(normalizedRole)) {
+    const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
+    return `=(${pointCol}${headerRowOneBased}+${reviewCol}${headerRowOneBased})*${pointRate}`;
+  }
+  return `=${pointCol}${headerRowOneBased}*${pointRate}`;
 }
 
 export const SHEET_COLUMN_HEADERS = [
@@ -31,6 +38,7 @@ export const SHEET_COLUMN_HEADERS = [
   "Assignees",
   "Followers",
   "Note",
+  "Review point",
 ] as const;
 
 export const SHEET_COLUMN_COUNT = SHEET_COLUMN_HEADERS.length;
@@ -46,6 +54,7 @@ export const COLUMN_INDEX = {
   assignees: 7,
   followers: 8,
   note: 9,
+  reviewPoint: 10,
 } as const;
 
 export const USER_OWNED_COLUMNS = [COLUMN_INDEX.note] as const;

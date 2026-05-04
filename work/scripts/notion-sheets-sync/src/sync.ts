@@ -11,6 +11,7 @@ import {
   SHEET_COLUMN_HEADERS,
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
+  REVIEW_ELIGIBLE_ROLES,
   columnLetter,
   isSyncableStatus,
   toSheetApp,
@@ -32,12 +33,7 @@ import {
   sizeCardNumberOf,
   type PointSource,
 } from "./notion/fields.ts";
-import {
-  pagesAsSubleadFollower,
-  buildSubleadReviewRow,
-  isSubleadReviewNote,
-  originalTaskPoint,
-} from "./sublead-review.ts";
+import { pagesAsReviewer, totalReviewPoints } from "./review-points.ts";
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {
@@ -106,22 +102,23 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   );
   candidatePages.sort(byCreatedTimeAscending);
 
-  const isSubleadRole = role.trim().toLowerCase() === "sublead";
-  const subleadFollowerPages = isSubleadRole
-    ? pagesAsSubleadFollower(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections)
+  const isReviewEligible = REVIEW_ELIGIBLE_ROLES.has(role.trim().toLowerCase());
+  const reviewerPages = isReviewEligible
+    ? pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections)
     : [];
-  subleadFollowerPages.sort(byCreatedTimeAscending);
+  const reviewPointTotal = totalReviewPoints(reviewerPages);
 
   const preservedRows = collectPreservedExistingRows(
     existingSection,
     candidatePages,
-    subleadFollowerPages,
     pageIdsInOtherSections,
   );
 
   logSyncedTasks(logger, tabName, candidatePages, pointSource);
-  if (subleadFollowerPages.length > 0) {
-    logger.info(`[${tabName}] sublead review (follower) — ${subleadFollowerPages.length} task(s) at 20% point`);
+  if (reviewerPages.length > 0) {
+    logger.info(
+      `[${tabName}] review points (follower-only) — ${reviewerPages.length} task(s), total ${reviewPointTotal}`,
+    );
   }
   if (preservedRows.length > 0) {
     logger.info(`[${tabName}] preserved ${preservedRows.length} existing row(s) outside candidate filter`);
@@ -154,12 +151,11 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     );
   });
 
-  const followerReviewRows = subleadFollowerPages.map((page) =>
-    buildSubleadReviewRow(page, originalTaskPoint(page)),
-  );
-
-  const allTaskRows = [...preservedRows, ...newTaskRows, ...followerReviewRows];
+  const allTaskRows = [...preservedRows, ...newTaskRows];
   for (let index = 0; index < allTaskRows.length; index++) {
+    while (allTaskRows[index].length < SHEET_COLUMN_COUNT) {
+      allTaskRows[index].push("");
+    }
     allTaskRows[index][COLUMN_INDEX.month] = String(index + 1);
   }
 
@@ -172,7 +168,13 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     0,
   );
   const totalMoney = totalPoints * pointRate;
-  const headerRow = buildMonthHeaderRow(targetMonthLabel, writeStartRow, allTaskRows.length, role);
+  const headerRow = buildMonthHeaderRow(
+    targetMonthLabel,
+    writeStartRow,
+    allTaskRows.length,
+    role,
+    reviewPointTotal,
+  );
 
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...allTaskRows]);
 
@@ -251,21 +253,14 @@ function pagesInCandidateWindow(
 function collectPreservedExistingRows(
   existingSection: MonthSection | undefined,
   candidatePages: NotionPage[],
-  subleadFollowerPages: NotionPage[],
   pageIdsInOtherSections: Set<string>,
 ): string[][] {
   if (!existingSection) return [];
 
   const candidatePageIds = new Set(candidatePages.map((page) => normalizeNotionPageId(page.id)));
-  const followerCandidatePageIds = new Set(
-    subleadFollowerPages.map((page) => normalizeNotionPageId(page.id)),
-  );
 
   const preserved: string[][] = [];
   for (const taskRow of existingSection.taskRows) {
-    const note = taskRow[COLUMN_INDEX.note] ?? "";
-    if (isSubleadReviewNote(note)) continue;
-
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const normalizedPageId = extractPageIdFromUrl(url);
     if (!normalizedPageId) {
@@ -273,7 +268,6 @@ function collectPreservedExistingRows(
       continue;
     }
     if (candidatePageIds.has(normalizedPageId)) continue;
-    if (followerCandidatePageIds.has(normalizedPageId)) continue;
     if (pageIdsInOtherSections.has(normalizedPageId)) continue;
     preserved.push(taskRow);
   }
@@ -342,9 +336,6 @@ function collectSheetPointsByPageId(section: MonthSection | undefined): Map<stri
   if (!section) return indexed;
 
   for (const taskRow of section.taskRows) {
-    const note = taskRow[COLUMN_INDEX.note] ?? "";
-    if (isSubleadReviewNote(note)) continue;
-
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const pageId = extractPageIdFromUrl(url);
     if (!pageId) continue;
@@ -369,13 +360,19 @@ function buildMonthHeaderRow(
   headerRowIndex: number,
   taskRowCount: number,
   role: string,
+  reviewPointTotal: number,
 ): string[] {
   const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
   row[COLUMN_INDEX.month] = monthLabel;
+  if (reviewPointTotal > 0) {
+    row[COLUMN_INDEX.reviewPoint] = String(reviewPointTotal);
+  }
 
   if (taskRowCount === 0) {
     row[COLUMN_INDEX.point] = "0";
-    row[COLUMN_INDEX.money] = "0";
+    row[COLUMN_INDEX.money] = reviewPointTotal > 0
+      ? moneyFormulaForRole(role, columnLetter(COLUMN_INDEX.point), headerRowIndex)
+      : "0";
     return row;
   }
 
