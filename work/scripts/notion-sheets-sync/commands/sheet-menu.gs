@@ -8,7 +8,7 @@
  *       Value: <fine-grained PAT, Actions:R&W on doanminhdang93/tools>
  *  3. Save → reload Sheet — the "🔄 Sync" menu appears.
  *
- * The system started in 4/2026; pickers and recent-3 never go below that.
+ * The system started in 4/2026; pickers never go below that.
  */
 
 const REPO = "doanminhdang93/tools";
@@ -29,19 +29,13 @@ function onOpen() {
 
 function buildScopeSubmenu(label, prefix) {
   const ui = SpreadsheetApp.getUi();
-  const validRecent = recentMonthLabels();
   const menu = ui.createMenu(label);
-
-  if (validRecent.length > 0) {
-    menu.addItem(`Recent ${validRecent.length} months (${validRecent.join(", ")})`, `${prefix}Recent3`);
-  }
 
   const offsetItems = [
     { offset: -1, suffix: "last month", handler: `${prefix}PrevMonth` },
     { offset: 0, suffix: "current month", handler: `${prefix}CurrentMonth` },
   ].filter((item) => isMonthAtOrAfterFloor(addMonthsLabel(item.offset)));
 
-  if (offsetItems.length > 0) menu.addSeparator();
   offsetItems.forEach((item) => {
     menu.addItem(`${addMonthsLabel(item.offset)} (${item.suffix})`, item.handler);
   });
@@ -58,10 +52,6 @@ function isMonthAtOrAfterFloor(label) {
   if (year > FLOOR_MONTH.year) return true;
   if (year < FLOOR_MONTH.year) return false;
   return month >= FLOOR_MONTH.month;
-}
-
-function recentMonthLabels() {
-  return [-1, 0].map((offset) => addMonthsLabel(offset)).filter(isMonthAtOrAfterFloor);
 }
 
 function pickerMonthLabels() {
@@ -88,7 +78,6 @@ function thisTabName() {
   return SpreadsheetApp.getActiveSheet().getName();
 }
 
-function syncAllRecent3() { fireSync({ recent3: true }); }
 function syncAllPrevMonth() { fireSync({ month: addMonthsLabel(-1) }); }
 function syncAllCurrentMonth() { fireSync({ month: addMonthsLabel(0) }); }
 function syncAllOtherMonth() {
@@ -97,7 +86,6 @@ function syncAllOtherMonth() {
   fireSync({ month });
 }
 
-function syncThisTabRecent3() { fireSync({ recent3: true, tab: thisTabName() }); }
 function syncThisTabPrevMonth() { fireSync({ month: addMonthsLabel(-1), tab: thisTabName() }); }
 function syncThisTabCurrentMonth() { fireSync({ month: addMonthsLabel(0), tab: thisTabName() }); }
 function syncThisTabOtherMonth() {
@@ -109,16 +97,12 @@ function syncThisTabOtherMonth() {
 function openCustomSyncDialog() {
   const members = getMemberList();
   const months = pickerMonthLabels();
-  const recent = recentMonthLabels();
   const memberOptions = members
     .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
     .join("");
   const monthOptions = months
     .map((label) => `<option value="${escapeHtml(label)}">${escapeHtml(label)}</option>`)
     .join("");
-  const recent3Label = recent.length > 0
-    ? `Recent ${recent.length} months (${recent.join(", ")})`
-    : "Recent months (none yet)";
 
   const html = `
 <!DOCTYPE html>
@@ -146,7 +130,6 @@ function openCustomSyncDialog() {
 
     <label for="month">Month</label>
     <select id="month">
-      <option value="recent3">${escapeHtml(recent3Label)}</option>
       ${monthOptions}
     </select>
 
@@ -179,8 +162,7 @@ function openCustomSyncDialog() {
 function triggerCustomSync(member, month) {
   const inputs = {};
   if (member) inputs.tab = member;
-  if (month === "recent3") inputs.recent3 = true;
-  else if (month) inputs.month = month;
+  if (month) inputs.month = month;
   fireSync(inputs);
 }
 
@@ -231,39 +213,6 @@ function fireSync(inputs) {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
-
-  if (inputs.recent3) {
-    const months = recentMonthLabels();
-    if (months.length === 0) {
-      SpreadsheetApp.getUi().alert(`No syncable months — floor is ${FLOOR_MONTH.month}/${FLOOR_MONTH.year}.`);
-      return;
-    }
-    const baseInputs = {};
-    if (inputs.tab) baseInputs.tab = inputs.tab;
-
-    const responses = months.map((month) =>
-      UrlFetchApp.fetch(dispatchUrl, {
-        method: "post",
-        contentType: "application/json",
-        headers,
-        payload: JSON.stringify({ ref: REF, inputs: { ...baseInputs, month } }),
-        muteHttpExceptions: true,
-      }),
-    );
-    const failures = responses.filter((r) => r.getResponseCode() !== 204);
-    if (failures.length === 0) {
-      const scope = inputs.tab ? `tab "${inputs.tab}"` : "all members";
-      SpreadsheetApp.getActive().toast(
-        `Sync triggered for ${scope}: ${months.join(", ")}`, "🔄 Sync", 6,
-      );
-    } else {
-      SpreadsheetApp.getUi().alert(
-        `${failures.length} of ${responses.length} dispatches failed.\n` +
-          failures.map((r) => `HTTP ${r.getResponseCode()}: ${r.getContentText()}`).join("\n\n"),
-      );
-    }
-    return;
-  }
 
   if (inputs.month && !isMonthAtOrAfterFloor(inputs.month)) {
     SpreadsheetApp.getUi().alert(`No syncs allowed before ${FLOOR_MONTH.month}/${FLOOR_MONTH.year}.`);
