@@ -22,7 +22,7 @@ import {
   followerNamesOf,
   createdTimeOf,
 } from "./notion/fields.ts";
-import { firstInstantOfMonth, lastInstantOfMonth } from "./util/month.ts";
+import { firstInstantOfMonth } from "./util/month.ts";
 import { formatSection } from "./format-section.ts";
 
 const COASSIGNEE_ROLES = new Set(["developer", "sublead", "po", "designer"]);
@@ -90,7 +90,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
   logger.info(`[${testerTab}] from coassignee tabs: ${tasksByUrl.size} task(s)`);
 
   const windowStart = firstInstantOfMonth(monthLabel);
-  const windowEnd = lastInstantOfMonth(monthLabel);
+  const windowEnd = new Date();
 
   const myPages = filterByAssignee(allPages, testerNotionName);
   let soloAdded = 0;

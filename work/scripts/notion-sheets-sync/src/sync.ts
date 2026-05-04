@@ -16,7 +16,7 @@ import {
   toSheetApp,
   toSheetStatus,
 } from "./constants.ts";
-import { firstInstantOfMonth, lastInstantOfMonth } from "./util/month.ts";
+import { firstInstantOfMonth } from "./util/month.ts";
 import { resolveTargetMonthLabel } from "./resolve-target.ts";
 import { formatSection } from "./format-section.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
@@ -89,8 +89,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     targetMonthOverride ?? resolveTargetMonthLabel(parsed, columnABackgrounds, now);
 
   const windowStart = firstInstantOfMonth(targetMonthLabel);
-  const defaultWindowEnd = targetMonthOverride ? lastInstantOfMonth(targetMonthLabel) : now;
-  const windowEnd = windowEndOverride ?? defaultWindowEnd;
+  const windowEnd = windowEndOverride ?? now;
 
   logger.info(
     `[${tabName}] syncing ${targetMonthLabel} (created_time window ${windowStart.toISOString()} → ${windowEnd.toISOString()}) for ${assigneeName}`,
