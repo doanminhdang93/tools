@@ -12,6 +12,12 @@ import { normalizeNotionPageId } from "./notion/url.ts";
 
 export const REVIEW_POINT_RATIO = 0.2;
 
+const LEGACY_REVIEW_NOTE_PATTERN = /^Review \(Sublead\)/;
+
+export function isLegacyReviewNote(note: string): boolean {
+  return LEGACY_REVIEW_NOTE_PATTERN.test(note);
+}
+
 export function discountedReviewPoint(originalPoint: number): number {
   return Math.round(originalPoint * REVIEW_POINT_RATIO * 100) / 100;
 }

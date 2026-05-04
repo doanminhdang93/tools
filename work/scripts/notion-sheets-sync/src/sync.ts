@@ -33,7 +33,7 @@ import {
   sizeCardNumberOf,
   type PointSource,
 } from "./notion/fields.ts";
-import { pagesAsReviewer, totalReviewPoints } from "./review-points.ts";
+import { pagesAsReviewer, totalReviewPoints, isLegacyReviewNote } from "./review-points.ts";
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {
@@ -260,6 +260,9 @@ function collectPreservedExistingRows(
 
   const preserved: string[][] = [];
   for (const taskRow of existingSection.taskRows) {
+    const note = taskRow[COLUMN_INDEX.note] ?? "";
+    if (isLegacyReviewNote(note)) continue;
+
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const normalizedPageId = extractPageIdFromUrl(url);
     if (!normalizedPageId) {
@@ -335,6 +338,9 @@ function collectSheetPointsByPageId(section: MonthSection | undefined): Map<stri
   if (!section) return indexed;
 
   for (const taskRow of section.taskRows) {
+    const note = taskRow[COLUMN_INDEX.note] ?? "";
+    if (isLegacyReviewNote(note)) continue;
+
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const pageId = extractPageIdFromUrl(url);
     if (!pageId) continue;
