@@ -4,12 +4,18 @@ import { readFileSync } from "node:fs";
 import { google, sheets_v4 } from "googleapis";
 import { loadConfig } from "../src/config.ts";
 import { parseTab } from "../src/sheets/parser.ts";
-import { COLUMN_INDEX, columnLetter } from "../src/constants.ts";
+import {
+  COLUMN_INDEX,
+  PO_LAYOUT_COLUMN_INDEX,
+  columnLetter,
+  rolesIncludePo,
+} from "../src/constants.ts";
 import { readMembers } from "../src/util/members.ts";
 
 loadDotenv({ path: resolve(import.meta.dirname, "../../../../.token.env") });
 
 let MEMBER_TABS: string[] = [];
+let PO_MEMBER_TABS: string[] = [];
 const DEFAULT_MEMBER = "DangDM";
 const SUMMARY_TAB = "Summary";
 
@@ -71,7 +77,8 @@ async function main() {
 
   const members = await readMembers();
   MEMBER_TABS = members.map((member) => member.tabName);
-  console.log(`Loaded ${MEMBER_TABS.length} members from Members tab.`);
+  PO_MEMBER_TABS = members.filter((member) => rolesIncludePo(member.role)).map((member) => member.tabName);
+  console.log(`Loaded ${MEMBER_TABS.length} members from Members tab (${PO_MEMBER_TABS.length} on PO layout).`);
 
   const { unionLabels, maxPerMember } = await collectAllMonthLabels(sheetsApi, spreadsheetId);
   console.log(
@@ -283,24 +290,36 @@ async function writeSummaryContent(
 ): Promise<void> {
   const selectedMember = preservedMember ?? DEFAULT_MEMBER;
   const selectedRankSort = preservedRankSort ?? RANK_SORT_POINT_LABEL;
-  const pointCol = columnLetter(COLUMN_INDEX.point);
-  const moneyCol = columnLetter(COLUMN_INDEX.money);
+  const oldPointCol = columnLetter(COLUMN_INDEX.point);
+  const oldMoneyCol = columnLetter(COLUMN_INDEX.money);
+  const poBaPointCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.baPoint);
+  const poTestPointCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.testPoint);
+  const poMoneyCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.money);
   const memberRef = `INDIRECT("'"&$C$2&"'!A:A")`;
-  const pointColRef = `INDIRECT("'"&$C$2&"'!${pointCol}:${pointCol}")`;
-  const moneyColRef = `INDIRECT("'"&$C$2&"'!${moneyCol}:${moneyCol}")`;
+  const oldPointColRef = `INDIRECT("'"&$C$2&"'!${oldPointCol}:${oldPointCol}")`;
+  const oldMoneyColRef = `INDIRECT("'"&$C$2&"'!${oldMoneyCol}:${oldMoneyCol}")`;
+  const poBaPointColRef = `INDIRECT("'"&$C$2&"'!${poBaPointCol}:${poBaPointCol}")`;
+  const poTestPointColRef = `INDIRECT("'"&$C$2&"'!${poTestPointCol}:${poTestPointCol}")`;
+  const poMoneyColRef = `INDIRECT("'"&$C$2&"'!${poMoneyCol}:${poMoneyCol}")`;
   const dataEndRow = FIRST_MONTH_ROW + Math.max(capacityRows, 1) - 1;
+  const isPoSelectedExpression = buildIsPoSelectedExpression();
 
   const monthSpillFormula =
     `=IFERROR(SORT(UNIQUE(FILTER(${memberRef},ISNUMBER(${memberRef}),${memberRef}>40000)),` +
     `1,$C$3=${JSON.stringify(SORT_ASC_LABEL)}),"")`;
+  const lookupRange = `B${FIRST_MONTH_ROW}:B${dataEndRow}`;
+  const oldPointVlookup = `IFERROR(VLOOKUP(${lookupRange},{${memberRef},${oldPointColRef}},2,FALSE),0)`;
+  const poPointVlookup =
+    `IFERROR(VLOOKUP(${lookupRange},{${memberRef},${poBaPointColRef}},2,FALSE),0)+` +
+    `IFERROR(VLOOKUP(${lookupRange},{${memberRef},${poTestPointColRef}},2,FALSE),0)`;
+  const oldMoneyVlookup = `IFERROR(VLOOKUP(${lookupRange},{${memberRef},${oldMoneyColRef}},2,FALSE),0)`;
+  const poMoneyVlookup = `IFERROR(VLOOKUP(${lookupRange},{${memberRef},${poMoneyColRef}},2,FALSE),0)`;
   const pointSpillFormula =
-    `=ARRAYFORMULA(IF(B${FIRST_MONTH_ROW}:B${dataEndRow}="","",` +
-    `IFERROR(VLOOKUP(B${FIRST_MONTH_ROW}:B${dataEndRow},` +
-    `{${memberRef},${pointColRef}},2,FALSE),0)))`;
+    `=ARRAYFORMULA(IF(${lookupRange}="","",` +
+    `IF(${isPoSelectedExpression},${poPointVlookup},${oldPointVlookup})))`;
   const moneySpillFormula =
-    `=ARRAYFORMULA(IF(B${FIRST_MONTH_ROW}:B${dataEndRow}="","",` +
-    `IFERROR(VLOOKUP(B${FIRST_MONTH_ROW}:B${dataEndRow},` +
-    `{${memberRef},${moneyColRef}},2,FALSE),0)))`;
+    `=ARRAYFORMULA(IF(${lookupRange}="","",` +
+    `IF(${isPoSelectedExpression},${poMoneyVlookup},${oldMoneyVlookup})))`;
 
   const updates: sheets_v4.Schema$ValueRange[] = [
     { range: `${SUMMARY_TAB}!B${TITLE_ROW}`, values: [["Monthly Summary"]] },
@@ -336,9 +355,18 @@ async function writeSummaryContent(
   });
 }
 
+function buildIsPoSelectedExpression(): string {
+  if (PO_MEMBER_TABS.length === 0) return "FALSE";
+  const conditions = PO_MEMBER_TABS.map((tabName) => `$C$2=${JSON.stringify(tabName)}`);
+  return `OR(${conditions.join(",")})`;
+}
+
 function buildRankUpdates(selectedRankSort: string): sheets_v4.Schema$ValueRange[] {
-  const memberPointCol = columnLetter(COLUMN_INDEX.point);
-  const memberMoneyCol = columnLetter(COLUMN_INDEX.money);
+  const oldPointCol = columnLetter(COLUMN_INDEX.point);
+  const oldMoneyCol = columnLetter(COLUMN_INDEX.money);
+  const poBaPointCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.baPoint);
+  const poTestPointCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.testPoint);
+  const poMoneyCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.money);
   const rankNumberCol = columnLetter(COL_RANK_NUMBER);
   const rankMemberCol = columnLetter(COL_RANK_MEMBER);
   const rankPointCol = columnLetter(COL_RANK_POINT);
@@ -348,12 +376,18 @@ function buildRankUpdates(selectedRankSort: string): sheets_v4.Schema$ValueRange
 
   const rankFirstRow = FIRST_MONTH_ROW;
   const rankLastRow = rankFirstRow + MEMBER_TABS.length - 1;
+  const poTabSet = new Set(PO_MEMBER_TABS);
 
-  const helperRows = MEMBER_TABS.map((tabName) => [
-    tabName,
-    `=SUMIF('${tabName}'!A:A, ">40000", '${tabName}'!${memberPointCol}:${memberPointCol})`,
-    `=SUMIF('${tabName}'!A:A, ">40000", '${tabName}'!${memberMoneyCol}:${memberMoneyCol})`,
-  ]);
+  const helperRows = MEMBER_TABS.map((tabName) => {
+    const isPo = poTabSet.has(tabName);
+    const pointFormula = isPo
+      ? `=SUMIF('${tabName}'!A:A,">40000",'${tabName}'!${poBaPointCol}:${poBaPointCol})+SUMIF('${tabName}'!A:A,">40000",'${tabName}'!${poTestPointCol}:${poTestPointCol})`
+      : `=SUMIF('${tabName}'!A:A,">40000",'${tabName}'!${oldPointCol}:${oldPointCol})`;
+    const moneyFormula = isPo
+      ? `=SUMIF('${tabName}'!A:A,">40000",'${tabName}'!${poMoneyCol}:${poMoneyCol})`
+      : `=SUMIF('${tabName}'!A:A,">40000",'${tabName}'!${oldMoneyCol}:${oldMoneyCol})`;
+    return [tabName, pointFormula, moneyFormula];
+  });
 
   const sortColumnExpression = `IF($${rankMemberCol}$${SORT_ROW}=${JSON.stringify(RANK_SORT_MONEY_LABEL)},3,2)`;
   const sortRangeExpression = `${helperTabCol}${rankFirstRow}:${helperMoneyCol}${rankLastRow}`;
