@@ -8,8 +8,6 @@ import {
 import { isSyncableStatus } from "./constants.ts";
 import { normalizeNotionPageId } from "./notion/url.ts";
 
-export const REVIEW_POINT_RATIO = 0.2;
-
 export interface PageRowLocation {
   tabName: string;
   row: number;
@@ -46,7 +44,7 @@ export function pagesAsReviewer(
 export function buildCrossTabReviewFormula(
   reviewerPages: NotionPage[],
   pageIdToRow: Map<string, PageRowLocation>,
-  pointColumnLetter: string,
+  reviewColumnLetter: string,
 ): string | null {
   if (reviewerPages.length === 0) return null;
 
@@ -55,9 +53,9 @@ export function buildCrossTabReviewFormula(
     const normalizedId = normalizeNotionPageId(page.id);
     const location = pageIdToRow.get(normalizedId);
     if (!location) continue;
-    cellRefs.push(`${location.tabName}!${pointColumnLetter}${location.row}`);
+    cellRefs.push(`${location.tabName}!${reviewColumnLetter}${location.row}`);
   }
 
   if (cellRefs.length === 0) return null;
-  return `=ROUND(${REVIEW_POINT_RATIO}*(${cellRefs.join("+")}), 2)`;
+  return `=ROUND(${cellRefs.join("+")}, 2)`;
 }

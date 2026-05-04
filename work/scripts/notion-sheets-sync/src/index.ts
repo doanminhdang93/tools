@@ -14,6 +14,7 @@ import type { PointSource } from "./notion/fields.ts";
 import type { PageRowLocation } from "./review-points.ts";
 import { COLUMN_INDEX } from "./constants.ts";
 import { extractPageIdFromUrl } from "./notion/url.ts";
+import { parseTab, findSection } from "./sheets/parser.ts";
 import type { SheetsClient } from "./sheets/client.ts";
 
 const ROOT_TOKEN_ENV_PATH = resolve(import.meta.dirname, "../../../../.token.env");
@@ -104,17 +105,23 @@ function notionDisplayNameFor(member: Member): string {
 async function buildPageIdToRowMap(
   members: Member[],
   sheets: SheetsClient,
+  targetMonthLabel: string,
 ): Promise<Map<string, PageRowLocation>> {
   const map = new Map<string, PageRowLocation>();
   for (const member of members) {
     const rows = await sheets.readTabValues(member.tabName);
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-      const link = (rows[rowIndex]?.[COLUMN_INDEX.link] ?? "").trim();
+    const parsed = parseTab(rows);
+    const section = findSection(parsed, targetMonthLabel);
+    if (!section) continue;
+    for (let taskIndex = 0; taskIndex < section.taskRows.length; taskIndex++) {
+      const link = (section.taskRows[taskIndex][COLUMN_INDEX.link] ?? "").trim();
       const pageId = extractPageIdFromUrl(link);
       if (!pageId) continue;
-      if (!map.has(pageId)) {
-        map.set(pageId, { tabName: member.tabName, row: rowIndex + 1 });
-      }
+      if (map.has(pageId)) continue;
+      map.set(pageId, {
+        tabName: member.tabName,
+        row: section.firstTaskRowIndex + taskIndex,
+      });
     }
   }
   return map;
@@ -181,8 +188,8 @@ async function main(): Promise<void> {
 
     if (role === SUBLEAD_ROLE && !pageIdToRowMap) {
       logger.info("Building pageId → row map for Sublead cross-tab review formulas...");
-      pageIdToRowMap = await buildPageIdToRowMap(members, sheets);
-      logger.info(`  mapped ${pageIdToRowMap.size} pages across ${members.length} tabs`);
+      pageIdToRowMap = await buildPageIdToRowMap(members, sheets, monthLabel);
+      logger.info(`  mapped ${pageIdToRowMap.size} pages across ${members.length} tabs (scope: ${monthLabel})`);
     }
 
     try {

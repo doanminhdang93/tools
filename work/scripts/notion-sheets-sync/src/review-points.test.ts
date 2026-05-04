@@ -81,10 +81,10 @@ describe("pagesAsReviewer", () => {
 
 describe("buildCrossTabReviewFormula", () => {
   it("returns null for empty pages", () => {
-    expect(buildCrossTabReviewFormula([], new Map(), "F")).toBeNull();
+    expect(buildCrossTabReviewFormula([], new Map(), "G")).toBeNull();
   });
 
-  it("emits ROUND(0.2 * (sum of cell refs), 2)", () => {
+  it("emits ROUND(sum of review-cell refs, 2) without re-multiplying by 0.2", () => {
     const map = new Map<string, PageRowLocation>([
       ["abc12345def012345678901234567890", { tabName: "DangDM", row: 8 }],
       ["fed98765abc012345678901234567890", { tabName: "ChienNH", row: 12 }],
@@ -93,14 +93,14 @@ describe("buildCrossTabReviewFormula", () => {
       pageWith({ id: "abc12345-def0-1234-5678-901234567890" }),
       pageWith({ id: "fed98765-abc0-1234-5678-901234567890" }),
     ];
-    expect(buildCrossTabReviewFormula(pages, map, "F")).toBe(
-      "=ROUND(0.2*(DangDM!F8+ChienNH!F12), 2)",
+    expect(buildCrossTabReviewFormula(pages, map, "G")).toBe(
+      "=ROUND(DangDM!G8+ChienNH!G12, 2)",
     );
   });
 
   it("returns null when no pages are mapped", () => {
     const pages = [pageWith({ id: "abc12345-def0-1234-5678-901234567890" })];
-    expect(buildCrossTabReviewFormula(pages, new Map(), "F")).toBeNull();
+    expect(buildCrossTabReviewFormula(pages, new Map(), "G")).toBeNull();
   });
 
   it("skips unmapped pages", () => {
@@ -111,6 +111,6 @@ describe("buildCrossTabReviewFormula", () => {
       pageWith({ id: "abc12345-def0-1234-5678-901234567890" }),
       pageWith({ id: "fed98765-abc0-1234-5678-901234567890" }),
     ];
-    expect(buildCrossTabReviewFormula(pages, map, "F")).toBe("=ROUND(0.2*(DangDM!F8), 2)");
+    expect(buildCrossTabReviewFormula(pages, map, "G")).toBe("=ROUND(DangDM!G8, 2)");
   });
 });

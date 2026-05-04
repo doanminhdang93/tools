@@ -118,7 +118,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     ? buildCrossTabReviewFormula(
         pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections),
         pageIdToRowMap,
-        columnLetter(COLUMN_INDEX.point),
+        columnLetter(COLUMN_INDEX.reviewPoint),
       )
     : null;
 
