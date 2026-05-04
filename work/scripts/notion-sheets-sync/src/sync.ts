@@ -204,6 +204,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
       const fieldLabel = targetField === "story_point" ? "Story Point" : "Size Card";
       const shortId = intent.page.id.slice(0, 8);
       if (result.ok) {
+        applyPushedPointToPage(intent.page, targetField, intent.point);
         logger.info(`[${tabName}]   ✔ ${shortId} → ${fieldLabel}=${intent.point}`);
       } else {
         logger.warn(`[${tabName}]   ✗ ${shortId} ${fieldLabel}=${intent.point} failed: ${result.reason}`);
@@ -351,6 +352,14 @@ function collectSheetPointsByPageId(section: MonthSection | undefined): Map<stri
     }
   }
   return indexed;
+}
+
+function applyPushedPointToPage(page: NotionPage, field: PointSource, newPoint: number): void {
+  const propertyName = field === "story_point" ? "Story Point" : "Size Card";
+  page.properties[propertyName] = {
+    type: "select",
+    select: { name: String(newPoint) },
+  } as NotionPage["properties"][string];
 }
 
 function pickPushTargetField(page: NotionPage, pointSource: PointSource): PointSource {
