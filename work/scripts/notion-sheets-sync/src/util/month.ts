@@ -27,6 +27,16 @@ export function lastInstantOfMonth(monthLabel: string): Date {
   return new Date(Date.UTC(nextYear, nextMonth - 1, 1) - VIETNAM_OFFSET_MILLISECONDS - 1);
 }
 
+// KPI cycle for month N runs from the 10th of the previous month (Vietnam
+// 00:00 local) up to the moment sync is run. Tasks created in that window
+// bucket into N's section.
+export function kpiCycleStart(monthLabel: string): Date {
+  const { month, year } = parseMonthLabel(monthLabel, "kpiCycleStart");
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  return new Date(Date.UTC(prevYear, prevMonth - 1, 10) - VIETNAM_OFFSET_MILLISECONDS);
+}
+
 export function currentMonthLabel(now: Date = new Date()): string {
   const vietnamNow = toVietnamTime(now);
   return formatMonthLabel(vietnamNow.getUTCMonth() + 1, vietnamNow.getUTCFullYear());

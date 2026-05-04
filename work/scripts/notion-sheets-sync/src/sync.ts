@@ -24,7 +24,7 @@ import {
   toSheetStatus,
 } from "./constants.ts";
 import { migrateLayoutIfNeeded, migratePoLayoutIfNeeded } from "./util/sheet-layout-migration.ts";
-import { firstInstantOfMonth, lastInstantOfMonth, isInVietnamSameDay } from "./util/month.ts";
+import { kpiCycleStart } from "./util/month.ts";
 import { resolveTargetMonthLabel } from "./resolve-target.ts";
 import { formatSection } from "./format-section.ts";
 import { buildNotionUrl, extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
@@ -107,11 +107,11 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const targetMonthLabel =
     targetMonthOverride ?? resolveTargetMonthLabel(parsed, columnABackgrounds, now);
 
-  const windowStart = firstInstantOfMonth(targetMonthLabel);
-  const windowEnd = windowEndOverride ?? lastInstantOfMonth(targetMonthLabel);
+  const windowStart = kpiCycleStart(targetMonthLabel);
+  const windowEnd = windowEndOverride ?? now;
 
   logger.info(
-    `[${tabName}] syncing ${targetMonthLabel} (created_time window ${windowStart.toISOString()} → ${windowEnd.toISOString()}, plus tasks created today VN) for ${assigneeName}`,
+    `[${tabName}] syncing ${targetMonthLabel} (KPI cycle ${windowStart.toISOString()} → ${windowEnd.toISOString()}) for ${assigneeName}`,
   );
 
   const existingSection = findSection(parsed, targetMonthLabel);
@@ -122,7 +122,6 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     assigneeName,
     windowStart,
     windowEnd,
-    now,
     pageIdsInOtherSections,
   );
   candidatePages.sort(byCreatedTimeAscending);
@@ -134,7 +133,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const subleadHeaderFormula = isSublead && tabHeaderRowMap && memberByNotionName
     ? buildSubleadReviewFormulaFromDevTotals(
         relatedDevTabsForReviewer(
-          pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, now, pageIdsInOtherSections),
+          pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections),
           memberByNotionName,
         ),
         tabHeaderRowMap,
@@ -289,7 +288,6 @@ function pagesInCandidateWindow(
   assigneeName: string,
   windowStart: Date,
   windowEnd: Date,
-  now: Date,
   pageIdsAlreadyInOtherSections: Set<string>,
 ): NotionPage[] {
   const assignedPages = filterByAssignee(allPages, assigneeName);
@@ -300,9 +298,7 @@ function pagesInCandidateWindow(
     if (!createdIso) return false;
 
     const createdAt = new Date(createdIso);
-    const inTargetMonth = createdAt >= windowStart && createdAt <= windowEnd;
-    const isTodayLateAddition = createdAt > windowEnd && isInVietnamSameDay(createdAt, now);
-    if (!inTargetMonth && !isTodayLateAddition) return false;
+    if (createdAt < windowStart || createdAt > windowEnd) return false;
 
     const normalizedPageId = normalizeNotionPageId(page.id);
     if (pageIdsAlreadyInOtherSections.has(normalizedPageId)) return false;

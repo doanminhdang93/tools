@@ -37,32 +37,44 @@ function pageWith(options: PageOptions): NotionPage {
 }
 
 describe("pagesAsReviewer", () => {
-  const windowStart = new Date("2026-04-01T00:00:00Z");
-  const windowEnd = new Date("2026-04-30T23:59:59Z");
-  const nowInsideTargetMonth = new Date("2026-04-15T03:00:00.000Z");
+  // KPI cycle for 4/2026: 10/3 → today (sync time)
+  const windowStart = new Date("2026-03-09T17:00:00.000Z"); // 10/3 00:00 Vietnam = 9/3 17:00 UTC
+  const windowEnd = new Date("2026-05-04T17:00:00.000Z"); // sync run on 5/4
 
   it("keeps pages where reviewer is Follower but not Assignee", () => {
     const pages = [
       pageWith({ id: "a", followers: ["LamDN"], assignees: ["DangDM"] }),
       pageWith({ id: "b", followers: ["DangDM"], assignees: ["LamDN"] }),
     ];
-    const result = pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, nowInsideTargetMonth, new Set());
+    const result = pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, new Set());
     expect(result.map((page) => page.id)).toEqual(["a"]);
   });
 
   it("excludes pages where reviewer is both Assignee and Follower", () => {
     const pages = [pageWith({ id: "a", assignees: ["LamDN"], followers: ["LamDN"] })];
-    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, nowInsideTargetMonth, new Set())).toEqual([]);
+    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, new Set())).toEqual([]);
   });
 
   it("drops pages with non-syncable status", () => {
     const pages = [
       pageWith({ id: "a", followers: ["LamDN"], assignees: ["X"], status: "Cancelled" }),
     ];
-    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, nowInsideTargetMonth, new Set())).toEqual([]);
+    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, new Set())).toEqual([]);
   });
 
-  it("drops pages created before target month", () => {
+  it("drops pages created before the KPI cycle start (10th of previous month)", () => {
+    const pages = [
+      pageWith({
+        id: "a",
+        followers: ["LamDN"],
+        assignees: ["X"],
+        createdIso: "2026-03-05T03:00:00.000Z",
+      }),
+    ];
+    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, new Set())).toEqual([]);
+  });
+
+  it("keeps pages from 10th of previous month onward", () => {
     const pages = [
       pageWith({
         id: "a",
@@ -71,40 +83,26 @@ describe("pagesAsReviewer", () => {
         createdIso: "2026-03-15T03:00:00.000Z",
       }),
     ];
-    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, nowInsideTargetMonth, new Set())).toEqual([]);
-  });
-
-  it("drops pages created after target month when sync is run on a non-today date", () => {
-    const pages = [
-      pageWith({
-        id: "a",
-        followers: ["LamDN"],
-        assignees: ["X"],
-        createdIso: "2026-05-02T03:00:00.000Z",
-      }),
-    ];
-    const nowAfterMonth = new Date("2026-05-04T10:00:00.000Z");
-    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, nowAfterMonth, new Set())).toEqual([]);
-  });
-
-  it("keeps tasks created TODAY (Vietnam day) even when target month is past", () => {
-    const pages = [
-      pageWith({
-        id: "a",
-        followers: ["LamDN"],
-        assignees: ["X"],
-        createdIso: "2026-05-04T03:00:00.000Z",
-      }),
-    ];
-    const nowToday = new Date("2026-05-04T10:00:00.000Z");
-    const result = pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, nowToday, new Set());
+    const result = pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, new Set());
     expect(result.map((page) => page.id)).toEqual(["a"]);
+  });
+
+  it("drops pages created after sync time", () => {
+    const pages = [
+      pageWith({
+        id: "a",
+        followers: ["LamDN"],
+        assignees: ["X"],
+        createdIso: "2026-05-10T03:00:00.000Z",
+      }),
+    ];
+    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, new Set())).toEqual([]);
   });
 
   it("drops pages already counted in other sections", () => {
     const pages = [pageWith({ id: "a", followers: ["LamDN"], assignees: ["X"] })];
     const inOther = new Set(["a"]);
-    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, nowInsideTargetMonth, inOther)).toEqual([]);
+    expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, inOther)).toEqual([]);
   });
 });
 

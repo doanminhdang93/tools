@@ -22,7 +22,7 @@ import {
   followerNamesOf,
   createdTimeOf,
 } from "./notion/fields.ts";
-import { firstInstantOfMonth, lastInstantOfMonth, isInVietnamSameDay } from "./util/month.ts";
+import { kpiCycleStart } from "./util/month.ts";
 import { readMigratedTabValues } from "./util/sheet-layout-migration.ts";
 import { formatSection } from "./format-section.ts";
 import { parseTab, findSection } from "./sheets/parser.ts";
@@ -67,9 +67,8 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     COASSIGNEE_ROLES.has(member.role.trim().toLowerCase()),
   );
 
-  const windowStart = firstInstantOfMonth(monthLabel);
-  const windowEnd = lastInstantOfMonth(monthLabel);
-  const now = new Date();
+  const windowStart = kpiCycleStart(monthLabel);
+  const windowEnd = new Date();
 
   const pagesByPageId = new Map<string, NotionPage>();
   for (const page of allPages) {
@@ -95,9 +94,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
       const createdIso = createdTimeOf(page);
       if (!createdIso) continue;
       const createdAt = new Date(createdIso);
-      const inTargetMonth = createdAt >= windowStart && createdAt <= windowEnd;
-      const isTodayLateAddition = createdAt > windowEnd && isInVietnamSameDay(createdAt, now);
-      if (!inTargetMonth && !isTodayLateAddition) continue;
+      if (createdAt < windowStart || createdAt > windowEnd) continue;
 
       tasksByUrl.set(url, {
         title: taskRow[COLUMN_INDEX.title] ?? "",
@@ -124,9 +121,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     const createdIso = createdTimeOf(page);
     if (!createdIso) continue;
     const createdAt = new Date(createdIso);
-    const inTargetMonth = createdAt >= windowStart && createdAt <= windowEnd;
-    const isTodayLateAddition = createdAt > windowEnd && isInVietnamSameDay(createdAt, now);
-    if (!inTargetMonth && !isTodayLateAddition) continue;
+    if (createdAt < windowStart || createdAt > windowEnd) continue;
 
     const url = `https://www.notion.so/${page.id.replace(/-/g, "")}`;
     if (tasksByUrl.has(url)) continue;
