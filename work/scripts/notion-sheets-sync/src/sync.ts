@@ -32,6 +32,12 @@ import {
   sizeCardNumberOf,
   type PointSource,
 } from "./notion/fields.ts";
+import {
+  pagesAsSubleadFollower,
+  buildSubleadReviewRow,
+  isSubleadReviewNote,
+  originalTaskPoint,
+} from "./sublead-review.ts";
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {
@@ -101,9 +107,23 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   );
   candidatePages.sort(byCreatedTimeAscending);
 
-  const preservedRows = collectPreservedExistingRows(existingSection, candidatePages, pageIdsInOtherSections);
+  const isSubleadRole = role.trim().toLowerCase() === "sublead";
+  const subleadFollowerPages = isSubleadRole
+    ? pagesAsSubleadFollower(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections)
+    : [];
+  subleadFollowerPages.sort(byCreatedTimeAscending);
+
+  const preservedRows = collectPreservedExistingRows(
+    existingSection,
+    candidatePages,
+    subleadFollowerPages,
+    pageIdsInOtherSections,
+  );
 
   logSyncedTasks(logger, tabName, candidatePages, pointSource);
+  if (subleadFollowerPages.length > 0) {
+    logger.info(`[${tabName}] sublead review (follower) — ${subleadFollowerPages.length} task(s) at 20% point`);
+  }
   if (preservedRows.length > 0) {
     logger.info(`[${tabName}] preserved ${preservedRows.length} existing row(s) outside candidate filter`);
   }
@@ -135,7 +155,11 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     );
   });
 
-  const allTaskRows = [...preservedRows, ...newTaskRows];
+  const followerReviewRows = subleadFollowerPages.map((page) =>
+    buildSubleadReviewRow(page, originalTaskPoint(page)),
+  );
+
+  const allTaskRows = [...preservedRows, ...newTaskRows, ...followerReviewRows];
   for (let index = 0; index < allTaskRows.length; index++) {
     allTaskRows[index][COLUMN_INDEX.month] = String(index + 1);
   }
@@ -228,14 +252,21 @@ function pagesInCandidateWindow(
 function collectPreservedExistingRows(
   existingSection: MonthSection | undefined,
   candidatePages: NotionPage[],
+  subleadFollowerPages: NotionPage[],
   pageIdsInOtherSections: Set<string>,
 ): string[][] {
   if (!existingSection) return [];
 
   const candidatePageIds = new Set(candidatePages.map((page) => normalizeNotionPageId(page.id)));
+  const followerCandidatePageIds = new Set(
+    subleadFollowerPages.map((page) => normalizeNotionPageId(page.id)),
+  );
 
   const preserved: string[][] = [];
   for (const taskRow of existingSection.taskRows) {
+    const note = taskRow[COLUMN_INDEX.note] ?? "";
+    if (isSubleadReviewNote(note)) continue;
+
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const normalizedPageId = extractPageIdFromUrl(url);
     if (!normalizedPageId) {
@@ -243,6 +274,7 @@ function collectPreservedExistingRows(
       continue;
     }
     if (candidatePageIds.has(normalizedPageId)) continue;
+    if (followerCandidatePageIds.has(normalizedPageId)) continue;
     if (pageIdsInOtherSections.has(normalizedPageId)) continue;
     preserved.push(taskRow);
   }
@@ -311,6 +343,9 @@ function collectSheetPointsByPageId(section: MonthSection | undefined): Map<stri
   if (!section) return indexed;
 
   for (const taskRow of section.taskRows) {
+    const note = taskRow[COLUMN_INDEX.note] ?? "";
+    if (isSubleadReviewNote(note)) continue;
+
     const url = taskRow[COLUMN_INDEX.link] ?? "";
     const pageId = extractPageIdFromUrl(url);
     if (!pageId) continue;
