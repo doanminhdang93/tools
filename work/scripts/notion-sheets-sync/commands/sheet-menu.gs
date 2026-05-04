@@ -29,7 +29,7 @@ function onOpen() {
 
 function buildScopeSubmenu(label, prefix) {
   const ui = SpreadsheetApp.getUi();
-  const validRecent = recentThreeMonthLabels();
+  const validRecent = recentMonthLabels();
   const menu = ui.createMenu(label);
 
   if (validRecent.length > 0) {
@@ -39,7 +39,6 @@ function buildScopeSubmenu(label, prefix) {
   const offsetItems = [
     { offset: -1, suffix: "last month", handler: `${prefix}PrevMonth` },
     { offset: 0, suffix: "current month", handler: `${prefix}CurrentMonth` },
-    { offset: 1, suffix: "next month", handler: `${prefix}NextMonth` },
   ].filter((item) => isMonthAtOrAfterFloor(addMonthsLabel(item.offset)));
 
   if (offsetItems.length > 0) menu.addSeparator();
@@ -61,12 +60,12 @@ function isMonthAtOrAfterFloor(label) {
   return month >= FLOOR_MONTH.month;
 }
 
-function recentThreeMonthLabels() {
-  return [-1, 0, 1].map((offset) => addMonthsLabel(offset)).filter(isMonthAtOrAfterFloor);
+function recentMonthLabels() {
+  return [-1, 0].map((offset) => addMonthsLabel(offset)).filter(isMonthAtOrAfterFloor);
 }
 
 function pickerMonthLabels() {
-  return [-3, -2, -1, 0, 1, 2, 3].map((offset) => addMonthsLabel(offset)).filter(isMonthAtOrAfterFloor);
+  return [-3, -2, -1, 0].map((offset) => addMonthsLabel(offset)).filter(isMonthAtOrAfterFloor);
 }
 
 function addMonthsLabel(offset) {
@@ -92,7 +91,6 @@ function thisTabName() {
 function syncAllRecent3() { fireSync({ recent3: true }); }
 function syncAllPrevMonth() { fireSync({ month: addMonthsLabel(-1) }); }
 function syncAllCurrentMonth() { fireSync({ month: addMonthsLabel(0) }); }
-function syncAllNextMonth() { fireSync({ month: addMonthsLabel(1) }); }
 function syncAllOtherMonth() {
   const month = promptForMonth();
   if (!month) return;
@@ -102,7 +100,6 @@ function syncAllOtherMonth() {
 function syncThisTabRecent3() { fireSync({ recent3: true, tab: thisTabName() }); }
 function syncThisTabPrevMonth() { fireSync({ month: addMonthsLabel(-1), tab: thisTabName() }); }
 function syncThisTabCurrentMonth() { fireSync({ month: addMonthsLabel(0), tab: thisTabName() }); }
-function syncThisTabNextMonth() { fireSync({ month: addMonthsLabel(1), tab: thisTabName() }); }
 function syncThisTabOtherMonth() {
   const month = promptForMonth();
   if (!month) return;
@@ -112,7 +109,7 @@ function syncThisTabOtherMonth() {
 function openCustomSyncDialog() {
   const members = getMemberList();
   const months = pickerMonthLabels();
-  const recent = recentThreeMonthLabels();
+  const recent = recentMonthLabels();
   const memberOptions = members
     .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
     .join("");
@@ -236,7 +233,7 @@ function fireSync(inputs) {
   };
 
   if (inputs.recent3) {
-    const months = recentThreeMonthLabels();
+    const months = recentMonthLabels();
     if (months.length === 0) {
       SpreadsheetApp.getUi().alert(`No syncable months — floor is ${FLOOR_MONTH.month}/${FLOOR_MONTH.year}.`);
       return;
