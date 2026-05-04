@@ -20,6 +20,7 @@ const MONTH_LABEL_PATTERN = /^\d{1,2}\/\d{4}$/;
 const STORY_POINT_ROLES = new Set(["po", "designer"]);
 const SKIP_ROLES = new Set(["pm"]);
 const TESTER_ROLE = "tester";
+const SUBLEAD_ROLE = "sublead";
 
 interface ParsedArguments {
   tabName?: string;
@@ -98,7 +99,8 @@ function notionDisplayNameFor(member: Member): string {
 
 function targetSortOrder(role: string): number {
   const normalized = role.trim().toLowerCase();
-  if (normalized === TESTER_ROLE) return 1;
+  if (normalized === TESTER_ROLE) return 2;
+  if (normalized === SUBLEAD_ROLE) return 1;
   return 0;
 }
 
