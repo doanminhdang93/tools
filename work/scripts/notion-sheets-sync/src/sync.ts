@@ -11,12 +11,19 @@ import {
   COLUMN_INDEX,
   USER_OWNED_COLUMNS,
   REVIEW_ELIGIBLE_ROLES,
+  PO_LAYOUT_COLUMN_INDEX,
+  PO_LAYOUT_COLUMN_COUNT,
+  PO_LAYOUT_USER_OWNED_COLUMNS,
+  PO_LAYOUT_TASK_TYPE_PO,
+  PO_LAYOUT_TASK_TYPE_TESTER,
+  poLayoutMoneyFormula,
+  rolesIncludePo,
   columnLetter,
   isSyncableStatus,
   toSheetApp,
   toSheetStatus,
 } from "./constants.ts";
-import { migrateLayoutIfNeeded } from "./util/sheet-layout-migration.ts";
+import { migrateLayoutIfNeeded, migratePoLayoutIfNeeded } from "./util/sheet-layout-migration.ts";
 import { firstInstantOfMonth, lastInstantOfMonth, isInVietnamSameDay } from "./util/month.ts";
 import { resolveTargetMonthLabel } from "./resolve-target.ts";
 import { formatSection } from "./format-section.ts";
@@ -87,8 +94,13 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   } = args;
   const pointRate = pointRateForRole(role);
 
+  const isPoLayout = rolesIncludePo(role);
+  const layoutColCount = isPoLayout ? PO_LAYOUT_COLUMN_COUNT : SHEET_COLUMN_COUNT;
+
   const rawRows = await sheets.readTabValues(tabName);
-  const existingRows = await migrateLayoutIfNeeded(tabName, rawRows, sheets, logger);
+  const existingRows = isPoLayout
+    ? await migratePoLayoutIfNeeded(tabName, rawRows, sheets, logger)
+    : await migrateLayoutIfNeeded(tabName, rawRows, sheets, logger);
   const parsed = parseTab(existingRows);
   const columnABackgrounds = await sheets.readColumnABackgrounds(tabName);
 
@@ -161,6 +173,9 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
 
   const newTaskRows = candidatePages.map((page) => {
     const normalizedId = normalizeNotionPageId(page.id);
+    if (isPoLayout) {
+      return buildPoTaskRow(page, existingRowByPageId.get(normalizedId));
+    }
     return buildTaskRow(
       page,
       existingRowByPageId.get(normalizedId),
@@ -177,29 +192,39 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
 
   const pointColLetter = columnLetter(COLUMN_INDEX.point);
   for (let index = 0; index < allTaskRows.length; index++) {
-    while (allTaskRows[index].length < SHEET_COLUMN_COUNT) {
+    while (allTaskRows[index].length < layoutColCount) {
       allTaskRows[index].push("");
     }
     allTaskRows[index][COLUMN_INDEX.month] = String(index + 1);
-    if (isReviewEligible) {
+    if (isReviewEligible && !isPoLayout) {
       const sheetRow = writeStartRow + 1 + index;
       allTaskRows[index][COLUMN_INDEX.reviewPoint] = `=${pointColLetter}${sheetRow}*0.2`;
     }
   }
 
-  const totalPoints = allTaskRows.reduce(
-    (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
-    0,
-  );
-  const totalMoney = totalPoints * pointRate;
-  const headerRow = buildMonthHeaderRow(
-    targetMonthLabel,
-    writeStartRow,
-    allTaskRows.length,
-    role,
-    isReviewEligible,
-    subleadHeaderFormula,
-  );
+  const totalPoints = isPoLayout
+    ? allTaskRows.reduce(
+        (sum, row) =>
+          sum +
+          (parseFloat(row[PO_LAYOUT_COLUMN_INDEX.baPoint]) || 0) +
+          (parseFloat(row[PO_LAYOUT_COLUMN_INDEX.testPoint]) || 0),
+        0,
+      )
+    : allTaskRows.reduce(
+        (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
+        0,
+      );
+  const totalMoney = isPoLayout ? 0 : totalPoints * pointRate;
+  const headerRow = isPoLayout
+    ? buildPoMonthHeaderRow(targetMonthLabel, writeStartRow, allTaskRows.length)
+    : buildMonthHeaderRow(
+        targetMonthLabel,
+        writeStartRow,
+        allTaskRows.length,
+        role,
+        isReviewEligible,
+        subleadHeaderFormula,
+      );
 
   if (existingSection) {
     const newRowCount = 1 + allTaskRows.length;
@@ -347,6 +372,66 @@ function indexTaskRowsByPageId(section: MonthSection | undefined): Map<string, s
     indexed.set(pageId, taskRow);
   }
   return indexed;
+}
+
+function buildPoTaskRow(page: NotionPage, existingRow: string[] | undefined): string[] {
+  const row = new Array<string>(PO_LAYOUT_COLUMN_COUNT).fill("");
+  row[PO_LAYOUT_COLUMN_INDEX.month] = "";
+  row[PO_LAYOUT_COLUMN_INDEX.title] = titleOf(page);
+  row[PO_LAYOUT_COLUMN_INDEX.link] = buildNotionUrl(page.id);
+  row[PO_LAYOUT_COLUMN_INDEX.app] = tagNamesOf(page).map(toSheetApp).join(", ");
+  row[PO_LAYOUT_COLUMN_INDEX.status] = toSheetStatus(statusOf(page));
+
+  const storyPoint = storyPointNumberOf(page);
+  const sizeCard = sizeCardNumberOf(page);
+  if (storyPoint > 0) {
+    row[PO_LAYOUT_COLUMN_INDEX.taskType] = PO_LAYOUT_TASK_TYPE_PO;
+    row[PO_LAYOUT_COLUMN_INDEX.baPoint] = String(storyPoint);
+    row[PO_LAYOUT_COLUMN_INDEX.testPoint] = "0";
+  } else if (sizeCard > 0) {
+    row[PO_LAYOUT_COLUMN_INDEX.taskType] = PO_LAYOUT_TASK_TYPE_TESTER;
+    row[PO_LAYOUT_COLUMN_INDEX.baPoint] = "0";
+    row[PO_LAYOUT_COLUMN_INDEX.testPoint] = String(sizeCard);
+  } else {
+    row[PO_LAYOUT_COLUMN_INDEX.taskType] = "";
+    row[PO_LAYOUT_COLUMN_INDEX.baPoint] = "0";
+    row[PO_LAYOUT_COLUMN_INDEX.testPoint] = "0";
+  }
+
+  row[PO_LAYOUT_COLUMN_INDEX.money] = "";
+  row[PO_LAYOUT_COLUMN_INDEX.assignees] = assigneeNamesOf(page).join(", ");
+  row[PO_LAYOUT_COLUMN_INDEX.followers] = followerNamesOf(page).join(", ");
+
+  for (const preservedIndex of PO_LAYOUT_USER_OWNED_COLUMNS) {
+    const existingValue = existingRow?.[preservedIndex];
+    if (existingValue !== undefined && existingValue !== "") {
+      row[preservedIndex] = existingValue;
+    }
+  }
+  return row;
+}
+
+function buildPoMonthHeaderRow(
+  monthLabel: string,
+  headerRowIndex: number,
+  taskRowCount: number,
+): string[] {
+  const row = new Array<string>(PO_LAYOUT_COLUMN_COUNT).fill("");
+  row[PO_LAYOUT_COLUMN_INDEX.month] = monthLabel;
+  if (taskRowCount === 0) {
+    row[PO_LAYOUT_COLUMN_INDEX.baPoint] = "0";
+    row[PO_LAYOUT_COLUMN_INDEX.testPoint] = "0";
+    row[PO_LAYOUT_COLUMN_INDEX.money] = "0";
+    return row;
+  }
+  const firstTaskRow = headerRowIndex + 1;
+  const lastTaskRow = headerRowIndex + taskRowCount;
+  const baCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.baPoint);
+  const testCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.testPoint);
+  row[PO_LAYOUT_COLUMN_INDEX.baPoint] = `=SUM(${baCol}${firstTaskRow}:${baCol}${lastTaskRow})`;
+  row[PO_LAYOUT_COLUMN_INDEX.testPoint] = `=SUM(${testCol}${firstTaskRow}:${testCol}${lastTaskRow})`;
+  row[PO_LAYOUT_COLUMN_INDEX.money] = poLayoutMoneyFormula(headerRowIndex, firstTaskRow, lastTaskRow);
+  return row;
 }
 
 function buildTaskRow(

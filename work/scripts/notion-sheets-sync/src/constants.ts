@@ -4,6 +4,20 @@ export const TESTER_POINT_RATIO = 0.3;
 
 export const REVIEW_ELIGIBLE_ROLES = new Set(["developer", "sublead"]);
 
+export const PO_LAYOUT_TASK_TYPE_PO = "PO task";
+export const PO_LAYOUT_TASK_TYPE_TESTER = "Tester task";
+
+export function parseRoles(roleField: string): string[] {
+  return roleField
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token.length > 0);
+}
+
+export function rolesIncludePo(roleField: string): boolean {
+  return parseRoles(roleField).includes("po");
+}
+
 export function pointRateForRole(role: string): number {
   const normalizedRole = role.trim().toLowerCase();
   if (normalizedRole === "po" || normalizedRole === "designer") return 22_000;
@@ -58,6 +72,58 @@ export const COLUMN_INDEX = {
 } as const;
 
 export const USER_OWNED_COLUMNS = [COLUMN_INDEX.note] as const;
+
+export const PO_LAYOUT_HEADERS = [
+  "Month & Stt",
+  "Task title",
+  "link",
+  "App",
+  "Status",
+  "Task type",
+  "BA Point",
+  "Test point",
+  "Money",
+  "Assignees",
+  "Followers",
+  "Note",
+] as const;
+
+export const PO_LAYOUT_COLUMN_COUNT = PO_LAYOUT_HEADERS.length;
+
+export const PO_LAYOUT_COLUMN_INDEX = {
+  month: 0,
+  title: 1,
+  link: 2,
+  app: 3,
+  status: 4,
+  taskType: 5,
+  baPoint: 6,
+  testPoint: 7,
+  money: 8,
+  assignees: 9,
+  followers: 10,
+  note: 11,
+} as const;
+
+export const PO_LAYOUT_USER_OWNED_COLUMNS = [
+  PO_LAYOUT_COLUMN_INDEX.taskType,
+  PO_LAYOUT_COLUMN_INDEX.note,
+] as const;
+
+export function poLayoutMoneyFormula(
+  headerRowOneBased: number,
+  firstTaskRow: number,
+  lastTaskRow: number,
+): string {
+  const taskTypeCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.taskType);
+  const baCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.baPoint);
+  const testCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.testPoint);
+  const taskTypeRange = `${taskTypeCol}${firstTaskRow}:${taskTypeCol}${lastTaskRow}`;
+  const baRange = `${baCol}${firstTaskRow}:${baCol}${lastTaskRow}`;
+  const testRange = `${testCol}${firstTaskRow}:${testCol}${lastTaskRow}`;
+  void headerRowOneBased;
+  return `=ROUND((SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_PO}",${baRange})+${TESTER_POINT_RATIO}*SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_TESTER}",${testRange}))*${POINT_VALUE_VND},0)`;
+}
 
 export function columnLetter(zeroBasedIndex: number): string {
   return String.fromCharCode(65 + zeroBasedIndex);
