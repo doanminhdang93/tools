@@ -25,6 +25,8 @@ import {
 import { firstInstantOfMonth, lastInstantOfMonth, isInVietnamSameDay } from "./util/month.ts";
 import { readMigratedTabValues } from "./util/sheet-layout-migration.ts";
 import { formatSection } from "./format-section.ts";
+import { parseTab, findSection } from "./sheets/parser.ts";
+import { extractPageIdFromUrl, normalizeNotionPageId } from "./notion/url.ts";
 
 const COASSIGNEE_ROLES = new Set(["developer", "sublead", "po", "designer"]);
 
@@ -65,6 +67,15 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     COASSIGNEE_ROLES.has(member.role.trim().toLowerCase()),
   );
 
+  const windowStart = firstInstantOfMonth(monthLabel);
+  const windowEnd = lastInstantOfMonth(monthLabel);
+  const now = new Date();
+
+  const pagesByPageId = new Map<string, NotionPage>();
+  for (const page of allPages) {
+    pagesByPageId.set(normalizeNotionPageId(page.id), page);
+  }
+
   const tasksByUrl = new Map<string, TaskEntry>();
 
   for (const dev of coassigneeMembers) {
@@ -76,6 +87,18 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
       if (!assigneeList.includes(testerNotionName)) continue;
       const url = (taskRow[COLUMN_INDEX.link] ?? "").trim();
       if (!url) continue;
+
+      const pageId = extractPageIdFromUrl(url);
+      if (!pageId) continue;
+      const page = pagesByPageId.get(pageId);
+      if (!page) continue;
+      const createdIso = createdTimeOf(page);
+      if (!createdIso) continue;
+      const createdAt = new Date(createdIso);
+      const inTargetMonth = createdAt >= windowStart && createdAt <= windowEnd;
+      const isTodayLateAddition = createdAt > windowEnd && isInVietnamSameDay(createdAt, now);
+      if (!inTargetMonth && !isTodayLateAddition) continue;
+
       tasksByUrl.set(url, {
         title: taskRow[COLUMN_INDEX.title] ?? "",
         notionUrl: url,
@@ -89,10 +112,6 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     }
   }
   logger.info(`[${testerTab}] from coassignee tabs: ${tasksByUrl.size} task(s)`);
-
-  const windowStart = firstInstantOfMonth(monthLabel);
-  const windowEnd = lastInstantOfMonth(monthLabel);
-  const now = new Date();
 
   const myPages = filterByAssignee(allPages, testerNotionName);
   let soloAdded = 0;
@@ -218,35 +237,67 @@ async function replaceMonthSection(
   const currentRowCount = sheetMeta?.properties?.gridProperties?.rowCount ?? 1000;
 
   const existingRows = await readMigratedTabValues(sheets, tabName, logger);
-  let headerZeroBased = -1;
-  let nextSectionZeroBased = existingRows.length;
-  for (let i = 0; i < existingRows.length; i++) {
-    const cellA = (existingRows[i]?.[0] ?? "").toString().trim();
-    if (cellA === monthLabel) {
-      headerZeroBased = i;
-      for (let j = i + 1; j < existingRows.length; j++) {
-        const nextA = (existingRows[j]?.[0] ?? "").toString().trim();
-        if (nextA && nextA !== monthLabel) {
-          nextSectionZeroBased = j;
-          break;
-        }
-      }
-      break;
+  const parsed = parseTab(existingRows);
+
+  const deleteRanges: Array<{ start: number; end: number }> = [];
+
+  const targetSection = findSection(parsed, monthLabel);
+  if (targetSection) {
+    deleteRanges.push({ start: targetSection.headerRowIndex, end: targetSection.lastRowIndex });
+  }
+
+  const inSectionRows = new Set<number>();
+  for (const section of parsed.sections) {
+    inSectionRows.add(section.headerRowIndex);
+    for (let taskIndex = 0; taskIndex < section.taskRows.length; taskIndex++) {
+      inSectionRows.add(section.firstTaskRowIndex + taskIndex);
     }
   }
 
-  if (headerZeroBased >= 0 && nextSectionZeroBased > headerZeroBased) {
+  const orphanRows: number[] = [];
+  for (let zeroBasedIndex = 1; zeroBasedIndex < existingRows.length; zeroBasedIndex++) {
+    const oneBasedRow = zeroBasedIndex + 1;
+    if (inSectionRows.has(oneBasedRow)) continue;
+    const row = existingRows[zeroBasedIndex] ?? [];
+    const hasTitle = (row[COLUMN_INDEX.title] ?? "").toString().trim().length > 0;
+    if (!hasTitle) continue;
+    orphanRows.push(oneBasedRow);
+  }
+  if (orphanRows.length > 0) {
+    let rangeStart = orphanRows[0];
+    let rangeEnd = orphanRows[0];
+    for (let i = 1; i < orphanRows.length; i++) {
+      if (orphanRows[i] === rangeEnd + 1) {
+        rangeEnd = orphanRows[i];
+      } else {
+        deleteRanges.push({ start: rangeStart, end: rangeEnd });
+        rangeStart = orphanRows[i];
+        rangeEnd = orphanRows[i];
+      }
+    }
+    deleteRanges.push({ start: rangeStart, end: rangeEnd });
+  }
+
+  if (deleteRanges.length > 0) {
+    deleteRanges.sort((leftRange, rightRange) => rightRange.start - leftRange.start);
+    const requests = deleteRanges.map((range) => ({
+      deleteDimension: {
+        range: { sheetId, dimension: "ROWS" as const, startIndex: range.start - 1, endIndex: range.end },
+      },
+    }));
     await sheets.rawApi.spreadsheets.batchUpdate({
       spreadsheetId: sheets.spreadsheetId,
-      requestBody: {
-        requests: [{
-          deleteDimension: {
-            range: { sheetId, dimension: "ROWS", startIndex: headerZeroBased, endIndex: nextSectionZeroBased },
-          },
-        }],
-      },
+      requestBody: { requests },
     });
-    logger.info(`[${tabName}] cleared old "${monthLabel}" section (${nextSectionZeroBased - headerZeroBased} rows)`);
+    const targetDeleted = targetSection ? targetSection.lastRowIndex - targetSection.headerRowIndex + 1 : 0;
+    const totalDeleted = deleteRanges.reduce((sum, range) => sum + (range.end - range.start + 1), 0);
+    if (targetSection) {
+      logger.info(`[${tabName}] cleared old "${monthLabel}" section (${targetDeleted} rows)`);
+    }
+    const orphansDeleted = totalDeleted - targetDeleted;
+    if (orphansDeleted > 0) {
+      logger.info(`[${tabName}] cleaned ${orphansDeleted} orphan task row(s) outside any section`);
+    }
   }
 
   const refreshedRows = await readMigratedTabValues(sheets, tabName, logger);
