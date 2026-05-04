@@ -60,3 +60,36 @@ export function totalReviewPoints(reviewerPages: NotionPage[]): number {
   }, 0);
   return sumHundredths / 100;
 }
+
+export interface PageRowLocation {
+  tabName: string;
+  row: number;
+}
+
+export function buildReviewPointFormula(
+  reviewerPages: NotionPage[],
+  pageIdToRow: Map<string, PageRowLocation>,
+  pointColumnLetter: string,
+): string | null {
+  if (reviewerPages.length === 0) return null;
+
+  const cellRefs: string[] = [];
+  let unmappedFallbackPoints = 0;
+
+  for (const page of reviewerPages) {
+    const normalizedId = page.id.replace(/-/g, "").toLowerCase();
+    const location = pageIdToRow.get(normalizedId);
+    if (location) {
+      cellRefs.push(`${location.tabName}!${pointColumnLetter}${location.row}`);
+    } else {
+      unmappedFallbackPoints += originalTaskPoint(page);
+    }
+  }
+
+  if (cellRefs.length === 0 && unmappedFallbackPoints === 0) return null;
+
+  const parts: string[] = [];
+  if (cellRefs.length > 0) parts.push(cellRefs.join("+"));
+  if (unmappedFallbackPoints > 0) parts.push(String(unmappedFallbackPoints));
+  return `=ROUND(${REVIEW_POINT_RATIO}*(${parts.join("+")}), 2)`;
+}

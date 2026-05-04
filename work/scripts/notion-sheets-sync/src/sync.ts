@@ -33,7 +33,13 @@ import {
   sizeCardNumberOf,
   type PointSource,
 } from "./notion/fields.ts";
-import { pagesAsReviewer, totalReviewPoints, isLegacyReviewNote } from "./review-points.ts";
+import {
+  pagesAsReviewer,
+  totalReviewPoints,
+  isLegacyReviewNote,
+  buildReviewPointFormula,
+  type PageRowLocation,
+} from "./review-points.ts";
 import type { Logger } from "./logger.ts";
 
 export interface SyncTabArgs {
@@ -48,6 +54,7 @@ export interface SyncTabArgs {
   role?: string;
   windowEndOverride?: Date;
   notionClient?: NotionClient;
+  pageIdToRowMap?: Map<string, PageRowLocation>;
 }
 
 export interface SyncTabResult {
@@ -72,6 +79,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     role = "",
     windowEndOverride,
     notionClient,
+    pageIdToRowMap,
   } = args;
   const pointRate = pointRateForRole(role);
 
@@ -106,6 +114,9 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     ? pagesAsReviewer(allPages, assigneeName, windowStart, windowEnd, pageIdsInOtherSections)
     : [];
   const reviewPointTotal = totalReviewPoints(reviewerPages);
+  const reviewPointFormula = pageIdToRowMap
+    ? buildReviewPointFormula(reviewerPages, pageIdToRowMap, columnLetter(COLUMN_INDEX.point))
+    : null;
 
   const preservedRows = collectPreservedExistingRows(
     existingSection,
@@ -172,7 +183,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     writeStartRow,
     allTaskRows.length,
     role,
-    reviewPointTotal,
+    reviewPointFormula ?? (reviewPointTotal > 0 ? String(reviewPointTotal) : ""),
   );
 
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...allTaskRows]);
@@ -374,17 +385,18 @@ function buildMonthHeaderRow(
   headerRowIndex: number,
   taskRowCount: number,
   role: string,
-  reviewPointTotal: number,
+  reviewPointCellValue: string,
 ): string[] {
   const row = new Array<string>(SHEET_COLUMN_COUNT).fill("");
   row[COLUMN_INDEX.month] = monthLabel;
-  if (reviewPointTotal > 0) {
-    row[COLUMN_INDEX.reviewPoint] = String(reviewPointTotal);
+  const hasReview = reviewPointCellValue.length > 0;
+  if (hasReview) {
+    row[COLUMN_INDEX.reviewPoint] = reviewPointCellValue;
   }
 
   if (taskRowCount === 0) {
     row[COLUMN_INDEX.point] = "0";
-    row[COLUMN_INDEX.money] = reviewPointTotal > 0
+    row[COLUMN_INDEX.money] = hasReview
       ? moneyFormulaForRole(role, columnLetter(COLUMN_INDEX.point), headerRowIndex)
       : "0";
     return row;

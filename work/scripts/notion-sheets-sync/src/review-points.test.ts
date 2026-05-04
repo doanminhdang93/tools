@@ -4,6 +4,8 @@ import {
   originalTaskPoint,
   pagesAsReviewer,
   totalReviewPoints,
+  buildReviewPointFormula,
+  type PageRowLocation,
 } from "./review-points.ts";
 import type { NotionPage } from "./notion/client.ts";
 
@@ -118,6 +120,46 @@ describe("pagesAsReviewer", () => {
     const pages = [pageWith({ id: "a", followers: ["LamDN"], assignees: ["X"] })];
     const inOther = new Set(["a"]);
     expect(pagesAsReviewer(pages, "LamDN", windowStart, windowEnd, inOther)).toEqual([]);
+  });
+});
+
+describe("buildReviewPointFormula", () => {
+  function pageWithId(id: string, sizeCard: number): NotionPage {
+    return pageWith({ id, sizeCard });
+  }
+
+  it("returns null for empty page list", () => {
+    expect(buildReviewPointFormula([], new Map(), "F")).toBeNull();
+  });
+
+  it("emits cell refs for each mapped page", () => {
+    const map = new Map<string, PageRowLocation>([
+      ["abc12345def012345678901234567890", { tabName: "DangDM", row: 8 }],
+      ["fed98765abc012345678901234567890", { tabName: "ChienNH", row: 12 }],
+    ]);
+    const pages = [
+      pageWithId("abc12345-def0-1234-5678-901234567890", 8),
+      pageWithId("fed98765-abc0-1234-5678-901234567890", 5),
+    ];
+    expect(buildReviewPointFormula(pages, map, "F")).toBe(
+      "=ROUND(0.2*(DangDM!F8+ChienNH!F12), 2)",
+    );
+  });
+
+  it("falls back to static sum for unmapped pages", () => {
+    const pages = [pageWithId("abc12345-def0-1234-5678-901234567890", 5)];
+    expect(buildReviewPointFormula(pages, new Map(), "F")).toBe("=ROUND(0.2*(5), 2)");
+  });
+
+  it("mixes refs and static fallback", () => {
+    const map = new Map<string, PageRowLocation>([
+      ["abc12345def012345678901234567890", { tabName: "DangDM", row: 8 }],
+    ]);
+    const pages = [
+      pageWithId("abc12345-def0-1234-5678-901234567890", 8),
+      pageWithId("fed98765-abc0-1234-5678-901234567890", 5),
+    ];
+    expect(buildReviewPointFormula(pages, map, "F")).toBe("=ROUND(0.2*(DangDM!F8+5), 2)");
   });
 });
 
