@@ -12,8 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@notionhq/client": "^2.2.15",
+    "@anthropic-ai/sdk": "^0.93.0",
     "@inquirer/prompts": "^7.2.1",
+    "@notionhq/client": "^2.2.15",
     "cheerio": "^1.0.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5"

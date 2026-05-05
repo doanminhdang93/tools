@@ -116,6 +116,22 @@ describe("htmlToBlocks — code blocks", () => {
     const code = blocks[0] as unknown as { code: { language: string } };
     expect(code.code.language).toBe("plain text");
   });
+
+  it("reads language from pre data-language (Starlight)", () => {
+    const blocks = htmlToBlocks(
+      '<pre data-language="js"><code>const a = 1;</code></pre>',
+      "https://x",
+    );
+    const code = blocks[0] as unknown as { code: { language: string } };
+    expect(code.code.language).toBe("javascript");
+  });
+
+  it("rebuilds newlines from Expressive Code ec-line structure", () => {
+    const html = `<pre data-language="js"><code><div class="ec-line"><div class="code"><span>const</span> <span>x</span> <span>=</span> <span>1</span><span>;</span></div></div><div class="ec-line"><div class="code"><span>const</span> <span>y</span> <span>=</span> <span>2</span><span>;</span></div></div></code></pre>`;
+    const blocks = htmlToBlocks(html, "https://x");
+    const code = blocks[0] as unknown as { code: { rich_text: Array<{ plain_text: string }> } };
+    expect(code.code.rich_text[0].plain_text).toBe("const x = 1;\nconst y = 2;");
+  });
 });
 
 describe("htmlToBlocks — tables", () => {

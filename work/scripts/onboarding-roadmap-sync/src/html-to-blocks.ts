@@ -135,11 +135,11 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   yml: "yaml",
 };
 
-function detectLanguage(className: string | undefined): string {
-  if (!className) return "plain text";
-  const match = className.match(/language-([a-zA-Z0-9+#-]+)/);
-  if (!match) return "plain text";
-  const raw = match[1].toLowerCase();
+function detectLanguage(rawCandidate: string | undefined): string {
+  if (!rawCandidate) return "plain text";
+  const fromClass = rawCandidate.match(/language-([a-zA-Z0-9+#-]+)/);
+  const raw = (fromClass ? fromClass[1] : rawCandidate).toLowerCase().trim();
+  if (!raw) return "plain text";
   const alias = LANGUAGE_ALIASES[raw] ?? raw;
   return NOTION_CODE_LANGS.has(alias) ? alias : "plain text";
 }
@@ -255,9 +255,20 @@ function convertAside(
 
 function convertCode($: cheerio.CheerioAPI, el: Cheerio<Element>): Block {
   const codeEl = el.find("code").first();
-  const className = codeEl.attr("class");
-  const language = detectLanguage(className);
-  const text = codeEl.text();
+  const language = detectLanguage(el.attr("data-language") ?? codeEl.attr("class"));
+  // Starlight Expressive Code wraps each line in <div class="ec-line">.
+  // cheerio's .text() concatenates without newlines, so reconstruct line-by-line.
+  const ecLines = codeEl.find("div.ec-line");
+  let text: string;
+  if (ecLines.length > 0) {
+    const lines: string[] = [];
+    ecLines.each((_, line) => {
+      lines.push($(line).text());
+    });
+    text = lines.join("\n");
+  } else {
+    text = codeEl.text();
+  }
   return {
     type: "code",
     code: {

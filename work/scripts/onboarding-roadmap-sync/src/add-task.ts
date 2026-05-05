@@ -11,10 +11,11 @@ import {
   replaceTaskBody,
   makeClient,
 } from "./notion-client.ts";
-import { extractMainHtml, extractTitle, fetchPage } from "./docs-fetcher.ts";
-import { htmlToBlocks } from "./html-to-blocks.ts";
+import { extractMainContent, extractMainHtml, extractTitle, fetchPage } from "./docs-fetcher.ts";
+import { htmlToBlocks, type Block } from "./html-to-blocks.ts";
 import { hashContent, normaliseText } from "./matching.ts";
 import { log } from "./logger.ts";
+import { augmentationToBlocks, generateAugmentation, makeAnthropicClient } from "./ai-augmenter.ts";
 
 loadEnv({ path: resolve(process.cwd(), "../../../.token.env") });
 
@@ -23,6 +24,8 @@ type Options = { url?: string; week?: number };
 async function main(options: Options): Promise<void> {
   const token = process.env.NOTION_API_KEY;
   if (!token) throw new Error("NOTION_API_KEY missing from .token.env");
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY missing from .token.env");
 
   const url = options.url ?? (await input({ message: "Docs URL?" }));
   if (!url.startsWith(DOCS_BASE_URL)) {
@@ -36,6 +39,7 @@ async function main(options: Options): Promise<void> {
     }));
 
   const client = makeClient(token);
+  const ai = makeAnthropicClient(anthropicKey);
   await ensureDbProperties(client);
   const existing = await indexExistingTasks(client);
 
@@ -45,7 +49,17 @@ async function main(options: Options): Promise<void> {
   const title = extractTitle(pageHtml);
   const mainText = normaliseText(title + " " + mainHtml.replace(/<[^>]+>/g, " "));
   const newHash = hashContent(mainText);
-  const blocks = htmlToBlocks(mainHtml, DOCS_BASE_URL);
+  const docBlocks = htmlToBlocks(mainHtml, DOCS_BASE_URL);
+
+  let augBlocks: Block[] = [];
+  try {
+    const contentText = extractMainContent(pageHtml);
+    const augmentation = await generateAugmentation(ai, { title, contentText });
+    augBlocks = augmentationToBlocks(augmentation);
+  } catch (err) {
+    log.warn(`AI augmentation failed: ${String(err)} — pushing without augmentation`);
+  }
+  const blocks = [...docBlocks, ...augBlocks];
 
   const found = existing.get(url);
   if (!found) {
