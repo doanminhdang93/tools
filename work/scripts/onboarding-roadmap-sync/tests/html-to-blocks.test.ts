@@ -153,3 +153,23 @@ describe("htmlToBlocks — asides (callouts)", () => {
     expect(callout.callout.icon.emoji).toBe("💡");
   });
 });
+
+describe("htmlToBlocks — degraded fallbacks", () => {
+  it("flattens details/summary into paragraph + children", () => {
+    const blocks = htmlToBlocks(
+      "<details><summary>S</summary><p>P</p></details>",
+      "https://x",
+    );
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "paragraph"]);
+  });
+
+  it("turns unknown tags into a paragraph with their text", () => {
+    const blocks = htmlToBlocks("<custom-tag>Hello</custom-tag>", "https://x");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("paragraph");
+  });
+
+  it("ignores empty wrappers", () => {
+    expect(htmlToBlocks("<div></div>", "https://x")).toEqual([]);
+  });
+});

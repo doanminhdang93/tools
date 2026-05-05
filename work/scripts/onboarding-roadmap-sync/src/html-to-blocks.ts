@@ -309,5 +309,29 @@ function convertElement(
     return img ? [img] : [];
   }
   if (tag === "aside") return [convertAside($, el, baseUrl)];
-  return [];
+
+  if (tag === "details") {
+    const summary = el.find("summary").first();
+    const $clone = el.clone();
+    $clone.find("summary").remove();
+    const summaryRich = richTextOf($, summary as Cheerio<Element>, baseUrl);
+    const summaryBlock: Block | null = summaryRich.length > 0 ? paragraphBlock(summaryRich) : null;
+    const childBlocks: Block[] = [];
+    $clone.children().each((_, child) => {
+      childBlocks.push(...convertElement($, $(child) as Cheerio<Element>, baseUrl));
+    });
+    return summaryBlock ? [summaryBlock, ...childBlocks] : childBlocks;
+  }
+
+  if (tag === "div" || tag === "section" || tag === "article" || tag === "main") {
+    const out: Block[] = [];
+    el.children().each((_, child) => {
+      out.push(...convertElement($, $(child) as Cheerio<Element>, baseUrl));
+    });
+    return out;
+  }
+
+  const fallbackRich = richTextOf($, el, baseUrl);
+  const totalLength = fallbackRich.reduce((n, r) => n + r.plain_text.length, 0);
+  return totalLength > 0 ? [paragraphBlock(fallbackRich)] : [];
 }
