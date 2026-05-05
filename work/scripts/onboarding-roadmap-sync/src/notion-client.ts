@@ -128,6 +128,49 @@ export async function appendBlocks(client: Client, pageId: string, blocks: Block
   }
 }
 
+export async function replacePageIntro(
+  client: Client,
+  pageId: string,
+  newIntroBlocks: Block[],
+): Promise<void> {
+  const children: Array<{ id: string; type: string }> = [];
+  let cursor: string | undefined = undefined;
+  do {
+    const page = await client.blocks.children.list({
+      block_id: pageId,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const child of page.results) {
+      if ("type" in child) children.push({ id: child.id, type: child.type });
+    }
+    cursor = page.next_cursor ?? undefined;
+    await sleep(RATE_LIMIT_MS);
+  } while (cursor);
+
+  const dbIndex = children.findIndex((c) => c.type === "child_database");
+  const introIds = dbIndex < 0
+    ? children.map((c) => c.id)
+    : children.slice(0, dbIndex).map((c) => c.id);
+  const anchorId = introIds.length > 0 ? introIds[introIds.length - 1] : undefined;
+
+  for (const chunk of chunkArray(newIntroBlocks, 100)) {
+    await withRetry(() =>
+      client.blocks.children.append({
+        block_id: pageId,
+        children: chunk as never,
+        ...(anchorId ? { after: anchorId } : {}),
+      }),
+    );
+    await sleep(RATE_LIMIT_MS);
+  }
+
+  for (const id of introIds) {
+    await withRetry(() => client.blocks.delete({ block_id: id }));
+    await sleep(RATE_LIMIT_MS);
+  }
+}
+
 export async function findInlineDatabase(client: Client, pageId: string): Promise<string | null> {
   const result = await client.blocks.children.list({ block_id: pageId, page_size: 100 });
   for (const child of result.results) {
