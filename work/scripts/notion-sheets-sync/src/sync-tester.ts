@@ -139,13 +139,16 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
   }
   logger.info(`[${testerTab}] sole-tester additions: ${soloAdded}`);
 
-  const livePageIds = new Set(pagesByPageId.keys());
+  const syncablePageIds = new Set<string>();
+  for (const [pageId, page] of pagesByPageId) {
+    if (isSyncableStatus(statusOf(page))) syncablePageIds.add(pageId);
+  }
   const preservedTesterRows = await collectPreservedTesterSectionRows(
     sheets,
     testerTab,
     monthLabel,
     tasksByUrl,
-    livePageIds,
+    syncablePageIds,
     logger,
   );
   if (preservedTesterRows.length > 0) {
@@ -174,7 +177,7 @@ async function collectPreservedTesterSectionRows(
   testerTab: string,
   monthLabel: string,
   rebuiltTasksByUrl: Map<string, TaskEntry>,
-  livePageIds: Set<string>,
+  syncablePageIds: Set<string>,
   logger: Logger,
 ): Promise<TaskEntry[]> {
   const rows = await readMigratedTabValues(sheets, testerTab, logger);
@@ -187,7 +190,7 @@ async function collectPreservedTesterSectionRows(
     if (rebuiltTasksByUrl.has(url)) continue;
 
     const pageId = extractPageIdFromUrl(url);
-    if (pageId && !livePageIds.has(pageId)) continue;
+    if (pageId && !syncablePageIds.has(pageId)) continue;
 
     preserved.push({
       title: row[COLUMN_INDEX.title] ?? "",

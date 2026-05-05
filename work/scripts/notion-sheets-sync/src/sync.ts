@@ -116,7 +116,11 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
 
   const existingSection = findSection(parsed, targetMonthLabel);
   const pageIdsInOtherSections = collectPageIdsOutsideCurrentSection(parsed, targetMonthLabel);
-  const livePageIds = new Set(allPages.map((page) => normalizeNotionPageId(page.id)));
+  const syncablePageIds = new Set(
+    allPages
+      .filter((page) => isSyncableStatus(statusOf(page)))
+      .map((page) => normalizeNotionPageId(page.id)),
+  );
   const candidatePages = pagesInCandidateWindow(
     allPages,
     assigneeName,
@@ -145,7 +149,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     existingSection,
     candidatePages,
     pageIdsInOtherSections,
-    livePageIds,
+    syncablePageIds,
   );
 
   logSyncedTasks(logger, tabName, candidatePages, pointSource);
@@ -311,7 +315,7 @@ function collectPreservedExistingRows(
   existingSection: MonthSection | undefined,
   candidatePages: NotionPage[],
   pageIdsInOtherSections: Set<string>,
-  livePageIds: Set<string>,
+  syncablePageIds: Set<string>,
 ): string[][] {
   if (!existingSection) return [];
 
@@ -330,7 +334,7 @@ function collectPreservedExistingRows(
     }
     if (candidatePageIds.has(normalizedPageId)) continue;
     if (pageIdsInOtherSections.has(normalizedPageId)) continue;
-    if (!livePageIds.has(normalizedPageId)) continue;
+    if (!syncablePageIds.has(normalizedPageId)) continue;
     preserved.push(taskRow);
   }
   return preserved;
