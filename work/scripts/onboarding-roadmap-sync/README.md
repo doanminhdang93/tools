@@ -32,7 +32,7 @@ npm run sync -- --dry-run
 | `npm run sync -- --force` | Rewrite body of every matched task even if hash unchanged. |
 | `npm run sync -- --week N` | Limit batch sync to a single week (1–4). |
 | `npm run add-task -- --url <docs-url> --week <N>` | Add or refresh one task. Prompts when flags missing. |
-| `npm run new-dev -- --page <duplicated-page-url> --name "<dev name>"` | Customise a Notion-duplicated copy of the master template. Renames title and resets all Status to `Not started`. |
+| `npm run new-dev -- --page <duplicated-page-url> --name "<dev name>"` | Customise a Notion-duplicated copy of the master template. Renames title and resets all Status to `To do`. |
 | `npm test` | Unit tests (cheerio fixture-based, no Notion calls). |
 | `npm run typecheck` | TypeScript compile check. |
 
@@ -47,7 +47,7 @@ npm run sync -- --dry-run
 
 The tool fetches the docs-site sidebar from `SIDEBAR_SEED_URL` (a known training-docs page; the docs homepage doesn't render the Week sidebar), parses Week 1–4 entries, and for each docs URL:
 
-- If no Notion task with that `Source URL` exists → create one (Name from docs page title, Week tag, Status `Not started`).
+- If no Notion task with that `Source URL` exists → create one (Name from docs page title, Week tag, Status `To do`).
 - If one exists and `Source Hash` differs → wipe its body, append new blocks, update the hash. **Never** touches Status, tag, or Name.
 - If one exists and the hash matches → skip.
 

@@ -13,7 +13,7 @@ export const WEEK_SECTIONS: Record<number, string> = {
   4: "Week 4 Final exam",
 };
 
-export const DEFAULT_STATUS_FOR_NEW_TASK = "Not started";
+export const DEFAULT_STATUS_FOR_NEW_TASK = "To do";
 export const RATE_LIMIT_MS = 350;
 
 export const SOURCE_URL_PROP = "Source URL";

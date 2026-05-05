@@ -10,6 +10,7 @@ import {
   resetAllTaskStatuses,
 } from "./notion-client.ts";
 import { log } from "./logger.ts";
+import { DEFAULT_STATUS_FOR_NEW_TASK } from "../config.ts";
 
 loadEnv({ path: resolve(process.cwd(), "../../../.token.env") });
 
@@ -40,7 +41,7 @@ async function main(options: Options): Promise<void> {
   log.info(`Renaming page → "${newTitle}"`);
   await renamePage(client, pageId, newTitle);
 
-  log.info("Resetting Status of every task to Not started...");
+  log.info(`Resetting Status of every task to ${DEFAULT_STATUS_FOR_NEW_TASK}...`);
   const count = await resetAllTaskStatuses(client, dbId);
   log.ok(`Done. Renamed page + reset ${count} tasks.`);
 }
