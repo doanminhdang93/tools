@@ -112,6 +112,99 @@ function dividerBlock(): Block {
   return { type: "divider", divider: {} };
 }
 
+const NOTION_CODE_LANGS = new Set([
+  "abap", "arduino", "bash", "basic", "c", "clojure", "coffeescript", "c++",
+  "c#", "css", "dart", "diff", "docker", "elixir", "elm", "erlang", "flow",
+  "fortran", "f#", "gherkin", "glsl", "go", "graphql", "groovy", "haskell",
+  "html", "java", "javascript", "json", "julia", "kotlin", "latex", "less",
+  "lisp", "livescript", "lua", "makefile", "markdown", "markup", "matlab",
+  "mermaid", "nix", "objective-c", "ocaml", "pascal", "perl", "php", "plain text",
+  "powershell", "prolog", "protobuf", "python", "r", "reason", "ruby", "rust",
+  "sass", "scala", "scheme", "scss", "shell", "sql", "swift", "typescript",
+  "vb.net", "verilog", "vhdl", "visual basic", "webassembly", "xml", "yaml",
+]);
+
+const LANGUAGE_ALIASES: Record<string, string> = {
+  js: "javascript",
+  jsx: "javascript",
+  ts: "typescript",
+  tsx: "typescript",
+  py: "python",
+  rb: "ruby",
+  sh: "shell",
+  yml: "yaml",
+};
+
+function detectLanguage(className: string | undefined): string {
+  if (!className) return "plain text";
+  const match = className.match(/language-([a-zA-Z0-9+#-]+)/);
+  if (!match) return "plain text";
+  const raw = match[1].toLowerCase();
+  const alias = LANGUAGE_ALIASES[raw] ?? raw;
+  return NOTION_CODE_LANGS.has(alias) ? alias : "plain text";
+}
+
+function listItemBlock(
+  type: "bulleted_list_item" | "numbered_list_item",
+  rich: RichText[],
+  children: Block[],
+): Block {
+  return {
+    type,
+    [type]: {
+      rich_text: rich,
+      color: "default",
+      ...(children.length > 0 ? { children } : {}),
+    },
+  };
+}
+
+function convertList(
+  $: cheerio.CheerioAPI,
+  el: Cheerio<Element>,
+  baseUrl: string,
+  ordered: boolean,
+): Block[] {
+  const blocks: Block[] = [];
+  el.children("li").each((_, li) => {
+    const $li = $(li);
+    const $clone = $li.clone();
+    $clone.children("ul,ol").remove();
+    const rich = richTextOf($, $clone as Cheerio<Element>, baseUrl);
+    const children: Block[] = [];
+    $li.children("ul,ol").each((_, child) => {
+      const childOrdered = (child as Element).tagName.toLowerCase() === "ol";
+      children.push(...convertList($, $(child) as Cheerio<Element>, baseUrl, childOrdered));
+    });
+    blocks.push(
+      listItemBlock(ordered ? "numbered_list_item" : "bulleted_list_item", rich, children),
+    );
+  });
+  return blocks;
+}
+
+function convertCode($: cheerio.CheerioAPI, el: Cheerio<Element>): Block {
+  const codeEl = el.find("code").first();
+  const className = codeEl.attr("class");
+  const language = detectLanguage(className);
+  const text = codeEl.text();
+  return {
+    type: "code",
+    code: {
+      rich_text: [
+        {
+          type: "text",
+          text: { content: text, link: null },
+          annotations: { ...defaultAnnotations },
+          plain_text: text,
+          href: null,
+        },
+      ],
+      language,
+    },
+  };
+}
+
 export function htmlToBlocks(html: string, baseUrl: string): Block[] {
   const $ = cheerio.load(`<div id="root">${html}</div>`);
   const root = $("#root");
@@ -137,5 +230,8 @@ function convertElement(
   if (tag === "p") return [paragraphBlock(richTextOf($, el, baseUrl))];
   if (tag === "hr") return [dividerBlock()];
   if (tag === "blockquote") return [quoteBlock(richTextOf($, el, baseUrl))];
+  if (tag === "ul") return convertList($, el, baseUrl, false);
+  if (tag === "ol") return convertList($, el, baseUrl, true);
+  if (tag === "pre") return [convertCode($, el)];
   return [];
 }

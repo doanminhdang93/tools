@@ -18,7 +18,7 @@ describe("htmlToBlocks — simple blocks", () => {
     const blocks = htmlToBlocks("<p>Hello world</p>", baseUrl);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("paragraph");
-    const para = blocks[0] as { type: "paragraph"; paragraph: { rich_text: Array<{ plain_text: string }> } };
+    const para = blocks[0] as unknown as { type: "paragraph"; paragraph: { rich_text: Array<{ plain_text: string }> } };
     expect(para.paragraph.rich_text[0].plain_text).toBe("Hello world");
   });
 
@@ -38,7 +38,7 @@ describe("htmlToBlocks — inline annotations", () => {
     const html =
       '<p><strong>bold</strong> <em>ital</em> <code>kode</code> <a href="/x">link</a> plain</p>';
     const blocks = htmlToBlocks(html, baseUrl);
-    const para = blocks[0] as {
+    const para = blocks[0] as unknown as {
       paragraph: {
         rich_text: Array<{
           plain_text: string;
@@ -59,8 +59,48 @@ describe("htmlToBlocks — 2000-char split", () => {
   it("splits a very long paragraph into multiple rich_text fragments", () => {
     const longText = "x".repeat(5000);
     const blocks = htmlToBlocks(`<p>${longText}</p>`, baseUrl);
-    const para = blocks[0] as { paragraph: { rich_text: Array<{ plain_text: string }> } };
+    const para = blocks[0] as unknown as { paragraph: { rich_text: Array<{ plain_text: string }> } };
     expect(para.paragraph.rich_text.length).toBeGreaterThanOrEqual(3);
     expect(para.paragraph.rich_text.every((r) => r.plain_text.length <= 2000)).toBe(true);
+  });
+});
+
+describe("htmlToBlocks — lists", () => {
+  it("converts a flat bulleted list", () => {
+    const blocks = htmlToBlocks("<ul><li>A</li><li>B</li></ul>", "https://x");
+    expect(blocks.map((b) => b.type)).toEqual([
+      "bulleted_list_item",
+      "bulleted_list_item",
+    ]);
+  });
+
+  it("converts a numbered list", () => {
+    const blocks = htmlToBlocks("<ol><li>A</li></ol>", "https://x");
+    expect(blocks[0].type).toBe("numbered_list_item");
+  });
+
+  it("nests sub-lists as block children", () => {
+    const blocks = htmlToBlocks("<ul><li>Outer<ul><li>Inner</li></ul></li></ul>", "https://x");
+    const outer = blocks[0] as unknown as { bulleted_list_item: { children?: Array<{ type: string }> } };
+    expect(outer.bulleted_list_item.children?.[0].type).toBe("bulleted_list_item");
+  });
+});
+
+describe("htmlToBlocks — code blocks", () => {
+  it("converts <pre><code class='language-js'>", () => {
+    const blocks = htmlToBlocks(
+      '<pre><code class="language-js">const a = 1;</code></pre>',
+      "https://x",
+    );
+    expect(blocks[0].type).toBe("code");
+    const code = blocks[0] as unknown as { code: { language: string; rich_text: Array<{ plain_text: string }> } };
+    expect(code.code.language).toBe("javascript");
+    expect(code.code.rich_text[0].plain_text).toBe("const a = 1;");
+  });
+
+  it("falls back to plain text when language missing", () => {
+    const blocks = htmlToBlocks("<pre><code>raw</code></pre>", "https://x");
+    const code = blocks[0] as unknown as { code: { language: string } };
+    expect(code.code.language).toBe("plain text");
   });
 });
