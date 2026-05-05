@@ -460,11 +460,35 @@ export function buildMasterIntroBlocks(): Block[] {
   });
 
   blocks.push({
+    type: "paragraph",
+    paragraph: {
+      rich_text: [
+        rt("Each task moves through a 6-stage Status pipeline: "),
+        rt("To do", { bold: true }),
+        rt(" → "),
+        rt("Doing", { bold: true }),
+        rt(" → "),
+        rt("Wait to Review", { bold: true }),
+        rt(" → "),
+        rt("Reviewing", { bold: true }),
+        rt(" → "),
+        rt("Feedback", { bold: true }),
+        rt(" → "),
+        rt("Done", { bold: true }),
+        rt("."),
+      ],
+      color: "default",
+    },
+  });
+
+  blocks.push({
     type: "numbered_list_item",
     numbered_list_item: {
       rich_text: [
         rt("Open the task and read the 📖 callout at the top — it has the "),
         rt("source doc and objective", { bold: true }),
+        rt(". Status stays "),
+        rt("To do", { bold: true }),
         rt("."),
       ],
       color: "default",
@@ -476,20 +500,10 @@ export function buildMasterIntroBlocks(): Block[] {
     numbered_list_item: {
       rich_text: [
         rt("Set Status = "),
-        rt("In progress", { bold: true }),
-        rt(", read the docs, and code through every example."),
-      ],
-      color: "default",
-    },
-  });
-
-  blocks.push({
-    type: "numbered_list_item",
-    numbered_list_item: {
-      rich_text: [
-        rt("Tick off each item in the "),
+        rt("Doing", { bold: true }),
+        rt(", read the docs, code through every example, and tick off the "),
         rt("Checklist", { bold: true }),
-        rt(" as you finish it. Your mentor will verify each one in review."),
+        rt(" as you go."),
       ],
       color: "default",
     },
@@ -499,9 +513,11 @@ export function buildMasterIntroBlocks(): Block[] {
     type: "numbered_list_item",
     numbered_list_item: {
       rich_text: [
-        rt("Answer the "),
+        rt("Once the checklist is complete and you can answer the "),
         rt("discussion questions", { bold: true }),
-        rt(" with your mentor (1-on-1 or as part of PR review)."),
+        rt(", push your code / open a PR and set Status = "),
+        rt("Wait to Review", { bold: true }),
+        rt("."),
       ],
       color: "default",
     },
@@ -511,9 +527,35 @@ export function buildMasterIntroBlocks(): Block[] {
     type: "numbered_list_item",
     numbered_list_item: {
       rich_text: [
-        rt("Set Status = "),
+        rt("Your mentor moves the task to "),
+        rt("Reviewing", { bold: true }),
+        rt(" while they go through the code, the checklist, and your answers."),
+      ],
+      color: "default",
+    },
+  });
+
+  blocks.push({
+    type: "numbered_list_item",
+    numbered_list_item: {
+      rich_text: [
+        rt("If the mentor leaves comments, the task moves to "),
+        rt("Feedback", { bold: true }),
+        rt(" — address every comment, push fixes, then set Status back to "),
+        rt("Wait to Review", { bold: true }),
+        rt(". Repeat until approved."),
+      ],
+      color: "default",
+    },
+  });
+
+  blocks.push({
+    type: "numbered_list_item",
+    numbered_list_item: {
+      rich_text: [
+        rt("When approved, the mentor marks Status = "),
         rt("Done", { bold: true }),
-        rt(" and move on to the next task in the week."),
+        rt(". Move on to the next task in the week."),
       ],
       color: "default",
     },
