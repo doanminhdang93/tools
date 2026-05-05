@@ -65,6 +65,19 @@ describe("htmlToBlocks — 2000-char split", () => {
   });
 });
 
+describe("htmlToBlocks — 100-fragment split", () => {
+  it("splits a paragraph with >100 rich_text fragments into multiple blocks", () => {
+    const inlineSpans = Array.from({ length: 250 }, (_, i) => `<code>x${i}</code>`).join(" ");
+    const blocks = htmlToBlocks(`<p>${inlineSpans}</p>`, baseUrl);
+    expect(blocks.length).toBeGreaterThanOrEqual(3);
+    expect(blocks.every((b) => b.type === "paragraph")).toBe(true);
+    for (const b of blocks) {
+      const para = b as unknown as { paragraph: { rich_text: unknown[] } };
+      expect(para.paragraph.rich_text.length).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
 describe("htmlToBlocks — lists", () => {
   it("converts a flat bulleted list", () => {
     const blocks = htmlToBlocks("<ul><li>A</li><li>B</li></ul>", "https://x");

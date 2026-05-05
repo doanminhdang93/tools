@@ -275,6 +275,34 @@ function convertCode($: cheerio.CheerioAPI, el: Cheerio<Element>): Block {
   };
 }
 
+const MAX_RICH_TEXT_PER_BLOCK = 100;
+
+const RICH_TEXT_BLOCK_TYPES = new Set([
+  "paragraph",
+  "heading_1",
+  "heading_2",
+  "heading_3",
+  "bulleted_list_item",
+  "numbered_list_item",
+  "quote",
+  "callout",
+]);
+
+function splitBlockByRichTextLimit(block: Block): Block[] {
+  if (!RICH_TEXT_BLOCK_TYPES.has(block.type)) return [block];
+  const inner = block[block.type] as { rich_text?: RichText[] } | undefined;
+  if (!inner?.rich_text || inner.rich_text.length <= MAX_RICH_TEXT_PER_BLOCK) return [block];
+  const parts: Block[] = [];
+  for (let i = 0; i < inner.rich_text.length; i += MAX_RICH_TEXT_PER_BLOCK) {
+    const slice = inner.rich_text.slice(i, i + MAX_RICH_TEXT_PER_BLOCK);
+    parts.push({
+      ...block,
+      [block.type]: { ...inner, rich_text: slice },
+    });
+  }
+  return parts;
+}
+
 export function htmlToBlocks(html: string, baseUrl: string): Block[] {
   const $ = cheerio.load(`<div id="root">${html}</div>`);
   const root = $("#root");
@@ -282,7 +310,7 @@ export function htmlToBlocks(html: string, baseUrl: string): Block[] {
   root.children().each((_, el) => {
     blocks.push(...convertElement($, $(el) as Cheerio<Element>, baseUrl));
   });
-  return blocks;
+  return blocks.flatMap(splitBlockByRichTextLimit);
 }
 
 function convertElement(
