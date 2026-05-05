@@ -24,21 +24,26 @@ export function tagNamesOf(page: NotionPage): string[] {
 }
 
 export function sizeCardNumberOf(page: NotionPage): number {
-  const sizeCardProperty = page.properties["Size Card"];
-  if (!sizeCardProperty || sizeCardProperty.type !== "select") return 0;
-  const sizeCard = (sizeCardProperty as { select?: { name?: string } | null }).select;
-  if (!sizeCard?.name) return 0;
-  const asNumber = Number(sizeCard.name);
-  return Number.isFinite(asNumber) ? asNumber : 0;
+  return readPointProperty(page.properties["Size Card"]);
 }
 
 export function storyPointNumberOf(page: NotionPage): number {
-  const storyPointProperty = page.properties["Story Point"];
-  if (!storyPointProperty || storyPointProperty.type !== "select") return 0;
-  const storyPoint = (storyPointProperty as { select?: { name?: string } | null }).select;
-  if (!storyPoint?.name) return 0;
-  const asNumber = Number(storyPoint.name);
-  return Number.isFinite(asNumber) ? asNumber : 0;
+  return readPointProperty(page.properties["Story Point"]);
+}
+
+function readPointProperty(property: NotionPage["properties"][string] | undefined): number {
+  if (!property) return 0;
+  if (property.type === "number") {
+    const numberValue = (property as { number?: number | null }).number;
+    return typeof numberValue === "number" && Number.isFinite(numberValue) ? numberValue : 0;
+  }
+  if (property.type === "select") {
+    const selectValue = (property as { select?: { name?: string } | null }).select;
+    if (!selectValue?.name) return 0;
+    const asNumber = Number(selectValue.name);
+    return Number.isFinite(asNumber) ? asNumber : 0;
+  }
+  return 0;
 }
 
 export type PointSource = "size_card" | "story_point";

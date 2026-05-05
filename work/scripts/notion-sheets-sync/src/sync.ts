@@ -254,7 +254,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
       const targetField = pickPushTargetField(intent.page, pointSource);
       const result = await pushPointToNotion({
         client: notionClient,
-        pageId: intent.page.id,
+        page: intent.page,
         point: intent.point,
         source: targetField,
       });
@@ -475,6 +475,14 @@ function collectSheetPointsByPageId(section: MonthSection | undefined): Map<stri
 
 function applyPushedPointToPage(page: NotionPage, field: PointSource, newPoint: number): void {
   const propertyName = field === "story_point" ? "Story Point" : "Size Card";
+  const existing = page.properties[propertyName];
+  if (existing?.type === "number") {
+    page.properties[propertyName] = {
+      type: "number",
+      number: newPoint,
+    } as NotionPage["properties"][string];
+    return;
+  }
   page.properties[propertyName] = {
     type: "select",
     select: { name: String(newPoint) },
