@@ -8,6 +8,9 @@ import {
   STATUS_PROP,
   TAG_PROP,
   NAME_PROP,
+  TIME_PROP,
+  ASSIGNEE_PROP,
+  FOLLOWER_PROP,
   DEFAULT_STATUS_FOR_NEW_TASK,
 } from "../config.ts";
 import { chunkArray, sleep, withRetry } from "./chunking.ts";
@@ -25,6 +28,9 @@ export async function ensureDbProperties(client: Client, dbId: string = NOTION_D
   const updates: Record<string, unknown> = {};
   if (!(SOURCE_URL_PROP in props)) updates[SOURCE_URL_PROP] = { url: {} };
   if (!(SOURCE_HASH_PROP in props)) updates[SOURCE_HASH_PROP] = { rich_text: {} };
+  if (!(TIME_PROP in props)) updates[TIME_PROP] = { date: {} };
+  if (!(ASSIGNEE_PROP in props)) updates[ASSIGNEE_PROP] = { people: {} };
+  if (!(FOLLOWER_PROP in props)) updates[FOLLOWER_PROP] = { people: {} };
   if (Object.keys(updates).length === 0) return;
   await client.databases.update({ database_id: dbId, properties: updates as never });
 }
@@ -82,6 +88,16 @@ export async function createTask(
   return created.id;
 }
 
+async function deleteBlockIdempotent(client: Client, blockId: string): Promise<void> {
+  try {
+    await withRetry(() => client.blocks.delete({ block_id: blockId }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("archived")) return;
+    throw error;
+  }
+}
+
 export async function replaceTaskBody(
   client: Client,
   pageId: string,
@@ -102,7 +118,7 @@ export async function replaceTaskBody(
   } while (cursor);
 
   for (const id of childIds) {
-    await withRetry(() => client.blocks.delete({ block_id: id }));
+    await deleteBlockIdempotent(client, id);
     await sleep(RATE_LIMIT_MS);
   }
 
@@ -166,7 +182,7 @@ export async function replacePageIntro(
   }
 
   for (const id of introIds) {
-    await withRetry(() => client.blocks.delete({ block_id: id }));
+    await deleteBlockIdempotent(client, id);
     await sleep(RATE_LIMIT_MS);
   }
 }

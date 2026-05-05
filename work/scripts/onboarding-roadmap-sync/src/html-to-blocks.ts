@@ -362,6 +362,17 @@ function convertElement(
     return summaryBlock ? [summaryBlock, ...childBlocks] : childBlocks;
   }
 
+  if (tag === "figure") {
+    const out: Block[] = [];
+    el.children().each((_, child) => {
+      const childTag = (child as Element).tagName.toLowerCase();
+      if (childTag === "figcaption") return;
+      if (childTag === "div" && ($(child).attr("class") ?? "").includes("copy")) return;
+      out.push(...convertElement($, $(child) as Cheerio<Element>, baseUrl));
+    });
+    return out;
+  }
+
   if (tag === "div" || tag === "section" || tag === "article" || tag === "main") {
     const out: Block[] = [];
     el.children().each((_, child) => {

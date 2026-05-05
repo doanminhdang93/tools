@@ -21,3 +21,6 @@ export const SOURCE_HASH_PROP = "Source Hash";
 export const STATUS_PROP = "Status";
 export const TAG_PROP = "tag";
 export const NAME_PROP = "Name";
+export const TIME_PROP = "Time";
+export const ASSIGNEE_PROP = "Assignee";
+export const FOLLOWER_PROP = "Follower";

@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { withRetry } from "./chunking.ts";
 
 export type SidebarItem = { week: number; title: string; url: string };
 
@@ -52,9 +53,11 @@ export function extractTitle(html: string): string {
 }
 
 export async function fetchPage(url: string): Promise<string> {
-  const response = await fetch(url, { headers: { "User-Agent": "onboarding-roadmap-sync/0.1" } });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-  }
-  return await response.text();
+  return withRetry(async () => {
+    const response = await fetch(url, { headers: { "User-Agent": "onboarding-roadmap-sync/0.1" } });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+    }
+    return response.text();
+  });
 }
