@@ -104,3 +104,52 @@ describe("htmlToBlocks — code blocks", () => {
     expect(code.code.language).toBe("plain text");
   });
 });
+
+describe("htmlToBlocks — tables", () => {
+  it("converts a 2x2 table with header", () => {
+    const html = "<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>";
+    const blocks = htmlToBlocks(html, "https://x");
+    expect(blocks[0].type).toBe("table");
+    const table = blocks[0] as unknown as {
+      table: {
+        table_width: number;
+        has_column_header: boolean;
+        children: Array<{ type: string; table_row: { cells: Array<Array<{ plain_text: string }>> } }>;
+      };
+    };
+    expect(table.table.table_width).toBe(2);
+    expect(table.table.has_column_header).toBe(true);
+    expect(table.table.children).toHaveLength(2);
+    expect(table.table.children[0].table_row.cells[0][0].plain_text).toBe("A");
+  });
+});
+
+describe("htmlToBlocks — images", () => {
+  it("converts img to image block with absolute URL", () => {
+    const blocks = htmlToBlocks('<img src="/foo.png" alt="x"/>', "https://x.com");
+    expect(blocks[0].type).toBe("image");
+    const img = blocks[0] as unknown as { image: { type: "external"; external: { url: string } } };
+    expect(img.image.external.url).toBe("https://x.com/foo.png");
+  });
+});
+
+describe("htmlToBlocks — asides (callouts)", () => {
+  it("converts starlight aside to callout with mapped icon", () => {
+    const blocks = htmlToBlocks(
+      '<aside class="starlight-aside starlight-aside--tip"><p>tip</p></aside>',
+      "https://x",
+    );
+    expect(blocks[0].type).toBe("callout");
+    const callout = blocks[0] as unknown as { callout: { icon: { emoji: string } } };
+    expect(callout.callout.icon.emoji).toBe("✅");
+  });
+
+  it("falls back to default icon for unknown aside variants", () => {
+    const blocks = htmlToBlocks(
+      '<aside class="starlight-aside"><p>x</p></aside>',
+      "https://x",
+    );
+    const callout = blocks[0] as unknown as { callout: { icon: { emoji: string } } };
+    expect(callout.callout.icon.emoji).toBe("💡");
+  });
+});

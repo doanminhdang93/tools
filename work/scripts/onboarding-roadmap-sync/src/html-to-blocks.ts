@@ -183,6 +183,76 @@ function convertList(
   return blocks;
 }
 
+const ASIDE_ICONS: Record<string, string> = {
+  note: "💡",
+  tip: "✅",
+  caution: "⚠️",
+  danger: "🛑",
+};
+
+function detectAsideKind(className: string | undefined): string | null {
+  if (!className) return null;
+  const m = className.match(/starlight-aside--([a-z]+)/);
+  return m ? m[1] : null;
+}
+
+function convertTable($: cheerio.CheerioAPI, el: Cheerio<Element>, baseUrl: string): Block {
+  const rows: Cheerio<Element>[] = [];
+  el.find("tr").each((_, tr) => {
+    rows.push($(tr) as Cheerio<Element>);
+  });
+  let tableWidth = 0;
+  const tableRows = rows.map(($tr) => {
+    const cells: RichText[][] = [];
+    $tr.children("th,td").each((_, cell) => {
+      cells.push(richTextOf($, $(cell) as Cheerio<Element>, baseUrl));
+    });
+    if (cells.length > tableWidth) tableWidth = cells.length;
+    return cells;
+  });
+  for (const row of tableRows) {
+    while (row.length < tableWidth) row.push([]);
+  }
+  const hasColumnHeader = el.find("thead th").length > 0;
+  return {
+    type: "table",
+    table: {
+      table_width: tableWidth,
+      has_column_header: hasColumnHeader,
+      has_row_header: false,
+      children: tableRows.map((cells) => ({
+        type: "table_row" as const,
+        table_row: { cells },
+      })),
+    },
+  };
+}
+
+function convertImage(el: Cheerio<Element>, baseUrl: string): Block | null {
+  const src = el.attr("src");
+  const url = resolveUrl(src, baseUrl);
+  if (!url) return null;
+  return { type: "image", image: { type: "external", external: { url } } };
+}
+
+function convertAside(
+  $: cheerio.CheerioAPI,
+  el: Cheerio<Element>,
+  baseUrl: string,
+): Block {
+  const kind = detectAsideKind(el.attr("class"));
+  const emoji = (kind && ASIDE_ICONS[kind]) ?? "💡";
+  const rich = richTextOf($, el, baseUrl);
+  return {
+    type: "callout",
+    callout: {
+      rich_text: rich,
+      icon: { type: "emoji", emoji },
+      color: "default",
+    },
+  };
+}
+
 function convertCode($: cheerio.CheerioAPI, el: Cheerio<Element>): Block {
   const codeEl = el.find("code").first();
   const className = codeEl.attr("class");
@@ -233,5 +303,11 @@ function convertElement(
   if (tag === "ul") return convertList($, el, baseUrl, false);
   if (tag === "ol") return convertList($, el, baseUrl, true);
   if (tag === "pre") return [convertCode($, el)];
+  if (tag === "table") return [convertTable($, el, baseUrl)];
+  if (tag === "img") {
+    const img = convertImage(el, baseUrl);
+    return img ? [img] : [];
+  }
+  if (tag === "aside") return [convertAside($, el, baseUrl)];
   return [];
 }
