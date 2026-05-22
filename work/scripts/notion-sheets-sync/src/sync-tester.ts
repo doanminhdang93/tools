@@ -75,6 +75,9 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     pagesByPageId.set(normalizeNotionPageId(page.id), page);
   }
 
+  const ownTabRows = await readMigratedTabValues(sheets, testerTab, logger);
+  const pageIdsInOtherSectionsOfOwnTab = collectPageIdsOutsideTargetSection(ownTabRows, monthLabel);
+
   const tasksByUrl = new Map<string, TaskEntry>();
 
   for (const dev of coassigneeMembers) {
@@ -89,8 +92,10 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
 
       const pageId = extractPageIdFromUrl(url);
       if (!pageId) continue;
+      if (pageIdsInOtherSectionsOfOwnTab.has(pageId)) continue;
       const page = pagesByPageId.get(pageId);
       if (!page) continue;
+      if (!isSyncableStatus(statusOf(page))) continue;
       const createdIso = createdTimeOf(page);
       if (!createdIso) continue;
       const createdAt = new Date(createdIso);
@@ -125,6 +130,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
 
     const url = `https://www.notion.so/${page.id.replace(/-/g, "")}`;
     if (tasksByUrl.has(url)) continue;
+    if (pageIdsInOtherSectionsOfOwnTab.has(normalizeNotionPageId(page.id))) continue;
     tasksByUrl.set(url, {
       title: titleOf(page),
       notionUrl: url,
@@ -204,6 +210,21 @@ async function collectPreservedTesterSectionRows(
     });
   }
   return preserved;
+}
+
+function collectPageIdsOutsideTargetSection(rows: string[][], targetMonthLabel: string): Set<string> {
+  const parsed = parseTab(rows);
+  const pageIds = new Set<string>();
+  for (const section of parsed.sections) {
+    if (section.monthLabel === targetMonthLabel) continue;
+    for (const taskRow of section.taskRows) {
+      const url = (taskRow[COLUMN_INDEX.link] ?? "").trim();
+      const pageId = extractPageIdFromUrl(url);
+      if (!pageId) continue;
+      pageIds.add(pageId);
+    }
+  }
+  return pageIds;
 }
 
 function collectTaskRows(rows: string[][], monthLabel: string): string[][] {
