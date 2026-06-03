@@ -17,10 +17,12 @@ const TEAM_SUMMARY_TAB = "Team Summary";
 const SKIP_ROLES = new Set(["pm"]);
 
 const COL_MEMBER = 0;
-const COL_POINT = 1;
-const COL_MONEY = 2;
-const COL_HIDDEN_DATE = 3;
-const COL_COUNT = 4;
+const COL_NICKNAME = 1;
+const COL_ROLE = 2;
+const COL_POINT = 3;
+const COL_MONEY = 4;
+const COL_HIDDEN_DATE = 5;
+const COL_COUNT = 6;
 
 const TITLE_ROW = 1;
 const SELECTOR_ROW = 2;
@@ -261,19 +263,28 @@ async function writeTeamSummaryContent(
     `VALUE(LEFT(${selectorCellRef},FIND("/",${selectorCellRef})-1)),` +
     `1),"")`;
 
+  const pointColLetter = columnLetter(COL_POINT);
+  const moneyColLetter = columnLetter(COL_MONEY);
+  const lastDataColLetter = columnLetter(COL_MONEY);
+
   const updates: sheets_v4.Schema$ValueRange[] = [
     { range: `${TEAM_SUMMARY_TAB}!A${TITLE_ROW}`, values: [["Team Monthly Summary"]] },
     { range: `${TEAM_SUMMARY_TAB}!A${SELECTOR_ROW}:B${SELECTOR_ROW}`, values: [["Month", selectedMonthLabel]] },
     { range: `${TEAM_SUMMARY_TAB}!${columnLetter(COL_HIDDEN_DATE)}${SELECTOR_ROW}`, values: [[parsedDateFormula]] },
     {
-      range: `${TEAM_SUMMARY_TAB}!A${TOTAL_ROW}:C${TOTAL_ROW}`,
+      range: `${TEAM_SUMMARY_TAB}!A${TOTAL_ROW}:${lastDataColLetter}${TOTAL_ROW}`,
       values: [[
         "Total",
-        `=SUM(B${FIRST_MEMBER_ROW}:B${lastMemberRow})`,
-        `=SUM(C${FIRST_MEMBER_ROW}:C${lastMemberRow})`,
+        "",
+        "",
+        `=SUM(${pointColLetter}${FIRST_MEMBER_ROW}:${pointColLetter}${lastMemberRow})`,
+        `=SUM(${moneyColLetter}${FIRST_MEMBER_ROW}:${moneyColLetter}${lastMemberRow})`,
       ]],
     },
-    { range: `${TEAM_SUMMARY_TAB}!A${HEADER_ROW}:C${HEADER_ROW}`, values: [["Member", "Point", "Money"]] },
+    {
+      range: `${TEAM_SUMMARY_TAB}!A${HEADER_ROW}:${lastDataColLetter}${HEADER_ROW}`,
+      values: [["Member", "Tab", "Role", "Point", "Money"]],
+    },
   ];
 
   const memberRows: string[][] = members.map((member) => {
@@ -295,10 +306,16 @@ async function writeTeamSummaryContent(
     const moneyFormula = isPo
       ? `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poMoneyCol}:${poMoneyCol})`
       : `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldMoneyCol}:${oldMoneyCol})`;
-    return [member.fullName || member.tabName, pointFormula, moneyFormula];
+    return [
+      member.fullName || member.tabName,
+      member.tabName,
+      member.role,
+      pointFormula,
+      moneyFormula,
+    ];
   });
   updates.push({
-    range: `${TEAM_SUMMARY_TAB}!A${FIRST_MEMBER_ROW}:C${lastMemberRow}`,
+    range: `${TEAM_SUMMARY_TAB}!A${FIRST_MEMBER_ROW}:${lastDataColLetter}${lastMemberRow}`,
     values: memberRows,
   });
 
@@ -353,7 +370,7 @@ async function applyTeamSummaryFormatting(
     padding: { top: 8, bottom: 8 },
   }));
 
-  requests.push(styleRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_MEMBER, COL_POINT, {
+  requests.push(styleRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_MEMBER, COL_NICKNAME, {
     backgroundColor: SELECTOR_LABEL_FILL,
     textFormat: { bold: true, fontSize: 11, foregroundColor: TEXT_SUBTLE },
     horizontalAlignment: "RIGHT",
@@ -362,11 +379,11 @@ async function applyTeamSummaryFormatting(
   }));
   requests.push({
     mergeCells: {
-      range: gridRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_POINT, COL_MONEY + 1),
+      range: gridRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_NICKNAME, COL_MONEY + 1),
       mergeType: "MERGE_ALL",
     },
   });
-  requests.push(styleRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_POINT, COL_MONEY + 1, {
+  requests.push(styleRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_NICKNAME, COL_MONEY + 1, {
     backgroundColor: SELECTOR_VALUE_FILL,
     textFormat: { bold: true, fontSize: 12, foregroundColor: TEXT_SUBTLE },
     horizontalAlignment: "CENTER",
@@ -375,7 +392,7 @@ async function applyTeamSummaryFormatting(
   }));
   requests.push({
     setDataValidation: {
-      range: gridRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_POINT, COL_MONEY + 1),
+      range: gridRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_NICKNAME, COL_MONEY + 1),
       rule: {
         condition: {
           type: "ONE_OF_LIST",
@@ -387,6 +404,12 @@ async function applyTeamSummaryFormatting(
     },
   });
 
+  requests.push({
+    mergeCells: {
+      range: gridRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_MEMBER, COL_POINT),
+      mergeType: "MERGE_ALL",
+    },
+  });
   requests.push(styleRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_MEMBER, COL_MONEY + 1, {
     backgroundColor: TOTAL_FILL,
     textFormat: { bold: true, fontSize: 13, foregroundColor: TEXT_SUBTLE },
@@ -473,6 +496,8 @@ async function applyTeamSummaryFormatting(
   });
 
   requests.push(setColumnWidth(sheetId, COL_MEMBER, 200));
+  requests.push(setColumnWidth(sheetId, COL_NICKNAME, 90));
+  requests.push(setColumnWidth(sheetId, COL_ROLE, 130));
   requests.push(setColumnWidth(sheetId, COL_POINT, 110));
   requests.push(setColumnWidth(sheetId, COL_MONEY, 170));
 
