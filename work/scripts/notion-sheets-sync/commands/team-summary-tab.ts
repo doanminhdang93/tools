@@ -246,6 +246,7 @@ async function writeTeamSummaryContent(
   selectedMonthLabel: string,
 ): Promise<void> {
   const oldPointCol = columnLetter(COLUMN_INDEX.point);
+  const oldReviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
   const oldMoneyCol = columnLetter(COLUMN_INDEX.money);
   const poBaCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.baPoint);
   const poTestCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.testPoint);
@@ -277,10 +278,20 @@ async function writeTeamSummaryContent(
 
   const memberRows: string[][] = members.map((member) => {
     const isPo = rolesIncludePo(member.role);
+    const isSublead = member.role.trim().toLowerCase() === "sublead";
     const tabRef = `'${member.tabName}'`;
-    const pointFormula = isPo
-      ? `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poBaCol}:${poBaCol})+SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poTestCol}:${poTestCol})`
-      : `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldPointCol}:${oldPointCol})`;
+    let pointFormula: string;
+    if (isPo) {
+      pointFormula =
+        `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poBaCol}:${poBaCol})+` +
+        `SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poTestCol}:${poTestCol})`;
+    } else if (isSublead) {
+      pointFormula =
+        `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldPointCol}:${oldPointCol})+` +
+        `SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldReviewCol}:${oldReviewCol})`;
+    } else {
+      pointFormula = `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldPointCol}:${oldPointCol})`;
+    }
     const moneyFormula = isPo
       ? `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poMoneyCol}:${poMoneyCol})`
       : `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldMoneyCol}:${oldMoneyCol})`;
