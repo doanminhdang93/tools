@@ -20,7 +20,6 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
   ui.createMenu("🔄 Sync")
-    .addSubMenu(buildScopeSubmenu("Sync ALL members", "syncAll"))
     .addSubMenu(buildScopeSubmenu("Sync this tab", "syncThisTab"))
     .addSeparator()
     .addItem("Custom sync…", "openCustomSyncDialog")
@@ -76,14 +75,6 @@ function addMonthsLabel(offset) {
 
 function thisTabName() {
   return SpreadsheetApp.getActiveSheet().getName();
-}
-
-function syncAllPrevMonth() { fireSync({ month: addMonthsLabel(-1) }); }
-function syncAllCurrentMonth() { fireSync({ month: addMonthsLabel(0) }); }
-function syncAllOtherMonth() {
-  const month = promptForMonth();
-  if (!month) return;
-  fireSync({ month });
 }
 
 function syncThisTabPrevMonth() {
