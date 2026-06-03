@@ -320,6 +320,18 @@ async function applyTeamSummaryFormatting(
 
   requests.push({ clearBasicFilter: { sheetId } });
 
+  const workbook = await sheetsApi.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets(properties(sheetId),bandedRanges(bandedRangeId))",
+  });
+  const sheetMeta = workbook.data.sheets?.find((sheet) => sheet.properties?.sheetId === sheetId);
+  const bandedRanges = (sheetMeta as { bandedRanges?: Array<{ bandedRangeId?: number | null }> } | undefined)?.bandedRanges ?? [];
+  for (const banded of bandedRanges) {
+    if (banded.bandedRangeId !== undefined && banded.bandedRangeId !== null) {
+      requests.push({ deleteBanding: { bandedRangeId: banded.bandedRangeId } });
+    }
+  }
+
   requests.push({
     updateSheetProperties: {
       properties: { sheetId, gridProperties: { frozenRowCount: 0, frozenColumnCount: 0 } },
@@ -392,10 +404,19 @@ async function applyTeamSummaryFormatting(
 
   requests.push(styleRange(sheetId, HEADER_ROW, HEADER_ROW + 1, COL_MEMBER, COL_MONEY + 1, {
     backgroundColor: HEADER_FILL,
-    textFormat: { bold: true, fontSize: 11, foregroundColor: TEXT_LIGHT },
+    textFormat: { bold: true, fontSize: 12, foregroundColor: TEXT_LIGHT },
     horizontalAlignment: "CENTER",
     verticalAlignment: "MIDDLE",
   }));
+  requests.push(styleRange(sheetId, HEADER_ROW, HEADER_ROW + 1, COL_POINT, COL_MONEY + 1, {
+    horizontalAlignment: "RIGHT",
+    padding: { right: 12 },
+  }));
+  for (const spacerRow of [TITLE_ROW + 2, TOTAL_ROW + 1]) {
+    requests.push(styleRange(sheetId, spacerRow, spacerRow + 1, COL_MEMBER, COL_MONEY + 1, {
+      backgroundColor: WHITE_FILL,
+    }));
+  }
 
   requests.push(styleRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, COL_MEMBER, COL_POINT, {
     backgroundColor: WHITE_FILL,
