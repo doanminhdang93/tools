@@ -9,16 +9,6 @@ import {
   PO_LAYOUT_COLUMN_INDEX,
   rolesIncludePo,
 } from "../src/constants.ts";
-
-function columnLetter(zeroBasedIndex: number): string {
-  let remaining = zeroBasedIndex;
-  let letters = "";
-  while (remaining >= 0) {
-    letters = String.fromCharCode(65 + (remaining % 26)) + letters;
-    remaining = Math.floor(remaining / 26) - 1;
-  }
-  return letters;
-}
 import { readMembers, type Member } from "../src/util/members.ts";
 
 loadDotenv({ path: resolve(import.meta.dirname, "../../../../.token.env") });
@@ -26,11 +16,17 @@ loadDotenv({ path: resolve(import.meta.dirname, "../../../../.token.env") });
 const TEAM_SUMMARY_TAB = "Team Summary";
 const SKIP_ROLES = new Set(["pm"]);
 
+const COL_MEMBER = 0;
+const COL_POINT = 1;
+const COL_MONEY = 2;
+const COL_HIDDEN_DATE = 3;
+const COL_COUNT = 4;
+
 const TITLE_ROW = 1;
-const MONTH_HEADER_ROW = 2;
-const SUBHEADER_ROW = 3;
+const SELECTOR_ROW = 2;
 const TOTAL_ROW = 4;
-const FIRST_MEMBER_ROW = 5;
+const HEADER_ROW = 6;
+const FIRST_MEMBER_ROW = 7;
 
 function rgb(hex: string) {
   const value = parseInt(hex.replace("#", ""), 16);
@@ -42,14 +38,26 @@ function rgb(hex: string) {
 }
 
 const TITLE_FILL = rgb("#1b5e20");
-const MONTH_FILL = rgb("#2e7d32");
-const SUBHEADER_FILL = rgb("#43a047");
+const HEADER_FILL = rgb("#2e7d32");
+const SELECTOR_LABEL_FILL = rgb("#e8f5e9");
+const SELECTOR_VALUE_FILL = rgb("#ffffff");
 const TOTAL_FILL = rgb("#a5d6a7");
 const STRIPE_FILL = rgb("#f6faf4");
 const WHITE_FILL = rgb("#ffffff");
 const TEXT_LIGHT = rgb("#ffffff");
 const TEXT_SUBTLE = rgb("#33691e");
 const BORDER_STRONG = { style: "SOLID_MEDIUM" as const, color: rgb("#2e7d32") };
+const BORDER_LIGHT = { style: "SOLID" as const, color: rgb("#c8e6c9") };
+
+function columnLetter(zeroBasedIndex: number): string {
+  let remaining = zeroBasedIndex;
+  let letters = "";
+  while (remaining >= 0) {
+    letters = String.fromCharCode(65 + (remaining % 26)) + letters;
+    remaining = Math.floor(remaining / 26) - 1;
+  }
+  return letters;
+}
 
 interface MonthRef {
   label: string;
@@ -73,15 +81,26 @@ async function main(): Promise<void> {
 
   const months = await collectAllMonths(sheetsApi, spreadsheetId, members);
   console.log(`Collected ${months.length} unique months across members.`);
+  if (months.length === 0) {
+    console.warn("No months found — nothing to write.");
+    return;
+  }
 
-  const sheetId = await ensureTeamSummaryTab(sheetsApi, spreadsheetId, members.length, months.length);
-  console.log(`✔ Team Summary tab ready (sheetId=${sheetId})`);
+  const { sheetId, preservedMonth } = await ensureTeamSummaryTab(
+    sheetsApi,
+    spreadsheetId,
+    members.length,
+    months,
+  );
+  console.log(`✔ Team Summary tab ready (sheetId=${sheetId}, preserved month=${preservedMonth ?? "none"})`);
 
-  await writeTeamSummaryContent(sheetsApi, spreadsheetId, members, months);
-  console.log(`✔ wrote content (${members.length} members × ${months.length} months)`);
+  const selectedMonth = months.find((month) => month.label === preservedMonth) ?? months[0];
 
-  await applyTeamSummaryFormatting(sheetsApi, spreadsheetId, sheetId, members.length, months.length);
-  console.log(`✔ applied formatting`);
+  await writeTeamSummaryContent(sheetsApi, spreadsheetId, members, selectedMonth.label);
+  console.log(`✔ wrote content (${members.length} members, month=${selectedMonth.label})`);
+
+  await applyTeamSummaryFormatting(sheetsApi, spreadsheetId, sheetId, members.length, months);
+  console.log(`✔ applied formatting (${months.length} months in dropdown)`);
 
   console.log("\nAll done.");
 }
@@ -126,9 +145,8 @@ async function ensureTeamSummaryTab(
   sheetsApi: sheets_v4.Sheets,
   spreadsheetId: string,
   memberCount: number,
-  monthCount: number,
-): Promise<number> {
-  const requiredColumns = 1 + monthCount * 2 + 1;
+  months: MonthRef[],
+): Promise<{ sheetId: number; preservedMonth: string | null }> {
   const requiredRows = FIRST_MEMBER_ROW + memberCount + 5;
 
   const workbook = await sheetsApi.spreadsheets.get({ spreadsheetId });
@@ -137,12 +155,22 @@ async function ensureTeamSummaryTab(
   );
   if (existing?.properties?.sheetId !== undefined && existing.properties.sheetId !== null) {
     const sheetId = existing.properties.sheetId;
-    const currentColumns = existing.properties.gridProperties?.columnCount ?? 10;
+    const currentColumns = existing.properties.gridProperties?.columnCount ?? 4;
     const currentRows = existing.properties.gridProperties?.rowCount ?? 100;
     const requests: sheets_v4.Schema$Request[] = [];
-    if (currentColumns < requiredColumns) {
+
+    const selectorResponse = await sheetsApi.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${TEAM_SUMMARY_TAB}!B${SELECTOR_ROW}`,
+    });
+    const previousSelection = (selectorResponse.data.values?.[0]?.[0] ?? "").toString().trim();
+    const preservedMonth = months.some((month) => month.label === previousSelection)
+      ? previousSelection
+      : null;
+
+    if (currentColumns < COL_COUNT) {
       requests.push({
-        appendDimension: { sheetId, dimension: "COLUMNS", length: requiredColumns - currentColumns },
+        appendDimension: { sheetId, dimension: "COLUMNS", length: COL_COUNT - currentColumns },
       });
     }
     if (currentRows < requiredRows) {
@@ -155,9 +183,9 @@ async function ensureTeamSummaryTab(
         range: {
           sheetId,
           startRowIndex: 0,
-          endRowIndex: requiredRows,
+          endRowIndex: Math.max(currentRows, requiredRows),
           startColumnIndex: 0,
-          endColumnIndex: requiredColumns,
+          endColumnIndex: Math.max(currentColumns, COL_COUNT),
         },
       },
     });
@@ -168,7 +196,7 @@ async function ensureTeamSummaryTab(
       spreadsheetId,
       range: `${TEAM_SUMMARY_TAB}!A:ZZ`,
     });
-    return sheetId;
+    return { sheetId, preservedMonth };
   }
 
   const response = await sheetsApi.spreadsheets.batchUpdate({
@@ -178,7 +206,7 @@ async function ensureTeamSummaryTab(
         addSheet: {
           properties: {
             title: TEAM_SUMMARY_TAB,
-            gridProperties: { rowCount: requiredRows, columnCount: requiredColumns, frozenRowCount: SUBHEADER_ROW, frozenColumnCount: 1 },
+            gridProperties: { rowCount: requiredRows, columnCount: COL_COUNT, frozenRowCount: HEADER_ROW },
             index: 1,
           },
         },
@@ -189,14 +217,14 @@ async function ensureTeamSummaryTab(
   if (addedSheetId === undefined || addedSheetId === null) {
     throw new Error(`Failed to create "${TEAM_SUMMARY_TAB}" tab`);
   }
-  return addedSheetId;
+  return { sheetId: addedSheetId, preservedMonth: null };
 }
 
 async function writeTeamSummaryContent(
   sheetsApi: sheets_v4.Sheets,
   spreadsheetId: string,
   members: Member[],
-  months: MonthRef[],
+  selectedMonthLabel: string,
 ): Promise<void> {
   const oldPointCol = columnLetter(COLUMN_INDEX.point);
   const oldMoneyCol = columnLetter(COLUMN_INDEX.money);
@@ -205,51 +233,44 @@ async function writeTeamSummaryContent(
   const poMoneyCol = columnLetter(PO_LAYOUT_COLUMN_INDEX.money);
 
   const lastMemberRow = FIRST_MEMBER_ROW + members.length - 1;
+  const selectorCellRef = `B${SELECTOR_ROW}`;
+  const dateHelperRef = `$${columnLetter(COL_HIDDEN_DATE)}$${SELECTOR_ROW}`;
+  const parsedDateFormula =
+    `=IFERROR(DATE(` +
+    `VALUE(MID(${selectorCellRef},FIND("/",${selectorCellRef})+1,4)),` +
+    `VALUE(LEFT(${selectorCellRef},FIND("/",${selectorCellRef})-1)),` +
+    `1),"")`;
 
-  const titleRow = ["Team Monthly Summary"];
-  const monthHeaderRow: string[] = [""];
-  const subHeaderRow: string[] = ["Member"];
-  for (const month of months) {
-    monthHeaderRow.push(`=DATE(${month.year},${month.month},1)`, "");
-    subHeaderRow.push("Point", "Money");
-  }
-
-  const totalRow: string[] = ["TOTAL"];
-  for (let monthIndex = 0; monthIndex < months.length; monthIndex++) {
-    const pointCol = columnLetter(1 + monthIndex * 2);
-    const moneyCol = columnLetter(1 + monthIndex * 2 + 1);
-    totalRow.push(
-      `=SUM(${pointCol}${FIRST_MEMBER_ROW}:${pointCol}${lastMemberRow})`,
-      `=SUM(${moneyCol}${FIRST_MEMBER_ROW}:${moneyCol}${lastMemberRow})`,
-    );
-  }
+  const updates: sheets_v4.Schema$ValueRange[] = [
+    { range: `${TEAM_SUMMARY_TAB}!A${TITLE_ROW}`, values: [["Team Monthly Summary"]] },
+    { range: `${TEAM_SUMMARY_TAB}!A${SELECTOR_ROW}:B${SELECTOR_ROW}`, values: [["Month", selectedMonthLabel]] },
+    { range: `${TEAM_SUMMARY_TAB}!${columnLetter(COL_HIDDEN_DATE)}${SELECTOR_ROW}`, values: [[parsedDateFormula]] },
+    {
+      range: `${TEAM_SUMMARY_TAB}!A${TOTAL_ROW}:C${TOTAL_ROW}`,
+      values: [[
+        "Total",
+        `=SUM(B${FIRST_MEMBER_ROW}:B${lastMemberRow})`,
+        `=SUM(C${FIRST_MEMBER_ROW}:C${lastMemberRow})`,
+      ]],
+    },
+    { range: `${TEAM_SUMMARY_TAB}!A${HEADER_ROW}:C${HEADER_ROW}`, values: [["Member", "Point", "Money"]] },
+  ];
 
   const memberRows: string[][] = members.map((member) => {
     const isPo = rolesIncludePo(member.role);
     const tabRef = `'${member.tabName}'`;
-    const row: string[] = [member.tabName];
-    for (let monthIndex = 0; monthIndex < months.length; monthIndex++) {
-      const monthColLetter = columnLetter(1 + monthIndex * 2);
-      const monthCellRef = `${monthColLetter}$${MONTH_HEADER_ROW}`;
-      const pointFormula = isPo
-        ? `=SUMIF(${tabRef}!A:A,${monthCellRef},${tabRef}!${poBaCol}:${poBaCol})+SUMIF(${tabRef}!A:A,${monthCellRef},${tabRef}!${poTestCol}:${poTestCol})`
-        : `=SUMIF(${tabRef}!A:A,${monthCellRef},${tabRef}!${oldPointCol}:${oldPointCol})`;
-      const moneyFormula = isPo
-        ? `=SUMIF(${tabRef}!A:A,${monthCellRef},${tabRef}!${poMoneyCol}:${poMoneyCol})`
-        : `=SUMIF(${tabRef}!A:A,${monthCellRef},${tabRef}!${oldMoneyCol}:${oldMoneyCol})`;
-      row.push(pointFormula, moneyFormula);
-    }
-    return row;
+    const pointFormula = isPo
+      ? `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poBaCol}:${poBaCol})+SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poTestCol}:${poTestCol})`
+      : `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldPointCol}:${oldPointCol})`;
+    const moneyFormula = isPo
+      ? `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poMoneyCol}:${poMoneyCol})`
+      : `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldMoneyCol}:${oldMoneyCol})`;
+    return [member.tabName, pointFormula, moneyFormula];
   });
-
-  const lastColLetter = columnLetter(1 + months.length * 2 - 1);
-  const updates: sheets_v4.Schema$ValueRange[] = [
-    { range: `${TEAM_SUMMARY_TAB}!A${TITLE_ROW}`, values: [titleRow] },
-    { range: `${TEAM_SUMMARY_TAB}!A${MONTH_HEADER_ROW}:${lastColLetter}${MONTH_HEADER_ROW}`, values: [monthHeaderRow] },
-    { range: `${TEAM_SUMMARY_TAB}!A${SUBHEADER_ROW}:${lastColLetter}${SUBHEADER_ROW}`, values: [subHeaderRow] },
-    { range: `${TEAM_SUMMARY_TAB}!A${TOTAL_ROW}:${lastColLetter}${TOTAL_ROW}`, values: [totalRow] },
-    { range: `${TEAM_SUMMARY_TAB}!A${FIRST_MEMBER_ROW}:${lastColLetter}${lastMemberRow}`, values: memberRows },
-  ];
+  updates.push({
+    range: `${TEAM_SUMMARY_TAB}!A${FIRST_MEMBER_ROW}:C${lastMemberRow}`,
+    values: memberRows,
+  });
 
   await sheetsApi.spreadsheets.values.batchUpdate({
     spreadsheetId,
@@ -262,9 +283,8 @@ async function applyTeamSummaryFormatting(
   spreadsheetId: string,
   sheetId: number,
   memberCount: number,
-  monthCount: number,
+  months: MonthRef[],
 ): Promise<void> {
-  const lastColExclusive = 1 + monthCount * 2;
   const lastMemberRowExclusive = FIRST_MEMBER_ROW + memberCount;
   const requests: sheets_v4.Schema$Request[] = [];
 
@@ -279,82 +299,95 @@ async function applyTeamSummaryFormatting(
 
   requests.push({
     mergeCells: {
-      range: gridRange(sheetId, TITLE_ROW, TITLE_ROW + 1, 0, lastColExclusive),
+      range: gridRange(sheetId, TITLE_ROW, TITLE_ROW + 1, COL_MEMBER, COL_MONEY + 1),
       mergeType: "MERGE_ALL",
     },
   });
-  requests.push(styleRange(sheetId, TITLE_ROW, TITLE_ROW + 1, 0, lastColExclusive, {
+  requests.push(styleRange(sheetId, TITLE_ROW, TITLE_ROW + 1, COL_MEMBER, COL_MONEY + 1, {
     backgroundColor: TITLE_FILL,
     textFormat: { bold: true, fontSize: 16, foregroundColor: TEXT_LIGHT, fontFamily: "Google Sans" },
     horizontalAlignment: "CENTER",
     verticalAlignment: "MIDDLE",
+    padding: { top: 8, bottom: 8 },
   }));
 
-  for (let monthIndex = 0; monthIndex < monthCount; monthIndex++) {
-    const startCol = 1 + monthIndex * 2;
-    requests.push({
-      mergeCells: {
-        range: gridRange(sheetId, MONTH_HEADER_ROW, MONTH_HEADER_ROW + 1, startCol, startCol + 2),
-        mergeType: "MERGE_ALL",
-      },
-    });
-  }
-  requests.push(styleRange(sheetId, MONTH_HEADER_ROW, MONTH_HEADER_ROW + 1, 1, lastColExclusive, {
-    backgroundColor: MONTH_FILL,
-    textFormat: { bold: true, fontSize: 12, foregroundColor: TEXT_LIGHT },
+  requests.push(styleRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_MEMBER, COL_POINT, {
+    backgroundColor: SELECTOR_LABEL_FILL,
+    textFormat: { bold: true, fontSize: 11, foregroundColor: TEXT_SUBTLE },
+    horizontalAlignment: "RIGHT",
+    verticalAlignment: "MIDDLE",
+    padding: { right: 10 },
+  }));
+  requests.push({
+    mergeCells: {
+      range: gridRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_POINT, COL_MONEY + 1),
+      mergeType: "MERGE_ALL",
+    },
+  });
+  requests.push(styleRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_POINT, COL_MONEY + 1, {
+    backgroundColor: SELECTOR_VALUE_FILL,
+    textFormat: { bold: true, fontSize: 12, foregroundColor: TEXT_SUBTLE },
     horizontalAlignment: "CENTER",
     verticalAlignment: "MIDDLE",
-    numberFormat: { type: "DATE", pattern: "m/yyyy" },
+    borders: { top: BORDER_LIGHT, bottom: BORDER_LIGHT, left: BORDER_LIGHT, right: BORDER_LIGHT },
   }));
+  requests.push({
+    setDataValidation: {
+      range: gridRange(sheetId, SELECTOR_ROW, SELECTOR_ROW + 1, COL_POINT, COL_MONEY + 1),
+      rule: {
+        condition: {
+          type: "ONE_OF_LIST",
+          values: months.map((month) => ({ userEnteredValue: month.label })),
+        },
+        strict: true,
+        showCustomUi: true,
+      },
+    },
+  });
 
-  requests.push(styleRange(sheetId, MONTH_HEADER_ROW, MONTH_HEADER_ROW + 1, 0, 1, {
-    backgroundColor: TITLE_FILL,
+  requests.push(styleRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_MEMBER, COL_MONEY + 1, {
+    backgroundColor: TOTAL_FILL,
+    textFormat: { bold: true, fontSize: 13, foregroundColor: TEXT_SUBTLE },
+    verticalAlignment: "MIDDLE",
   }));
+  requests.push(styleRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_MEMBER, COL_POINT, {
+    horizontalAlignment: "CENTER",
+  }));
+  requests.push(styleRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_POINT, COL_MONEY + 1, {
+    horizontalAlignment: "RIGHT",
+    padding: { right: 12 },
+  }));
+  requests.push(numberFormatRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_POINT, COL_POINT + 1, "#,##0"));
+  requests.push(numberFormatRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_MONEY, COL_MONEY + 1, `#,##0" ₫"`));
 
-  requests.push(styleRange(sheetId, SUBHEADER_ROW, SUBHEADER_ROW + 1, 0, lastColExclusive, {
-    backgroundColor: SUBHEADER_FILL,
+  requests.push(styleRange(sheetId, HEADER_ROW, HEADER_ROW + 1, COL_MEMBER, COL_MONEY + 1, {
+    backgroundColor: HEADER_FILL,
     textFormat: { bold: true, fontSize: 11, foregroundColor: TEXT_LIGHT },
     horizontalAlignment: "CENTER",
     verticalAlignment: "MIDDLE",
   }));
 
-  requests.push(styleRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, 0, lastColExclusive, {
-    backgroundColor: TOTAL_FILL,
-    textFormat: { bold: true, fontSize: 12, foregroundColor: TEXT_SUBTLE },
-    horizontalAlignment: "RIGHT",
-    verticalAlignment: "MIDDLE",
-    padding: { right: 8 },
-  }));
-  requests.push(styleRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, 0, 1, {
-    horizontalAlignment: "CENTER",
-  }));
-
-  requests.push(styleRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, 0, 1, {
+  requests.push(styleRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, COL_MEMBER, COL_POINT, {
     backgroundColor: WHITE_FILL,
     textFormat: { bold: true, fontSize: 11, foregroundColor: TEXT_SUBTLE },
     horizontalAlignment: "LEFT",
     verticalAlignment: "MIDDLE",
-    padding: { left: 8 },
+    padding: { left: 10 },
   }));
-  requests.push(styleRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, 1, lastColExclusive, {
+  requests.push(styleRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, COL_POINT, COL_MONEY + 1, {
     backgroundColor: WHITE_FILL,
     textFormat: { fontSize: 11 },
     horizontalAlignment: "RIGHT",
     verticalAlignment: "MIDDLE",
-    padding: { right: 8 },
+    padding: { right: 12 },
   }));
-
-  for (let monthIndex = 0; monthIndex < monthCount; monthIndex++) {
-    const pointCol = 1 + monthIndex * 2;
-    const moneyCol = pointCol + 1;
-    requests.push(numberFormatRange(sheetId, TOTAL_ROW, lastMemberRowExclusive, pointCol, pointCol + 1, "#,##0"));
-    requests.push(numberFormatRange(sheetId, TOTAL_ROW, lastMemberRowExclusive, moneyCol, moneyCol + 1, `#,##0" ₫"`));
-  }
+  requests.push(numberFormatRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, COL_POINT, COL_POINT + 1, "#,##0"));
+  requests.push(numberFormatRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, COL_MONEY, COL_MONEY + 1, `#,##0" ₫"`));
 
   requests.push({
     addConditionalFormatRule: {
       rule: {
-        ranges: [gridRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, 0, lastColExclusive)],
+        ranges: [gridRange(sheetId, FIRST_MEMBER_ROW, lastMemberRowExclusive, COL_MEMBER, COL_MONEY + 1)],
         booleanRule: {
           condition: {
             type: "CUSTOM_FORMULA",
@@ -369,33 +402,40 @@ async function applyTeamSummaryFormatting(
 
   requests.push({
     updateBorders: {
-      range: gridRange(sheetId, SUBHEADER_ROW, SUBHEADER_ROW + 1, 0, lastColExclusive),
+      range: gridRange(sheetId, HEADER_ROW, HEADER_ROW + 1, COL_MEMBER, COL_MONEY + 1),
       bottom: BORDER_STRONG,
     },
   });
   requests.push({
     updateBorders: {
-      range: gridRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, 0, lastColExclusive),
+      range: gridRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_MEMBER, COL_MONEY + 1),
       top: BORDER_STRONG,
       bottom: BORDER_STRONG,
+      left: BORDER_STRONG,
+      right: BORDER_STRONG,
     },
   });
 
-  requests.push(setColumnWidth(sheetId, 0, 110));
-  for (let monthIndex = 0; monthIndex < monthCount; monthIndex++) {
-    const pointCol = 1 + monthIndex * 2;
-    requests.push(setColumnWidth(sheetId, pointCol, 80));
-    requests.push(setColumnWidth(sheetId, pointCol + 1, 110));
-  }
+  requests.push(setColumnWidth(sheetId, COL_MEMBER, 140));
+  requests.push(setColumnWidth(sheetId, COL_POINT, 110));
+  requests.push(setColumnWidth(sheetId, COL_MONEY, 170));
 
-  requests.push(setRowHeight(sheetId, TITLE_ROW - 1, 44));
-  requests.push(setRowHeight(sheetId, MONTH_HEADER_ROW - 1, 32));
-  requests.push(setRowHeight(sheetId, SUBHEADER_ROW - 1, 28));
-  requests.push(setRowHeight(sheetId, TOTAL_ROW - 1, 32));
+  requests.push(setRowHeight(sheetId, TITLE_ROW - 1, 48));
+  requests.push(setRowHeight(sheetId, SELECTOR_ROW - 1, 36));
+  requests.push(setRowHeight(sheetId, TOTAL_ROW - 1, 40));
+  requests.push(setRowHeight(sheetId, HEADER_ROW - 1, 30));
+
+  requests.push({
+    updateDimensionProperties: {
+      range: { sheetId, dimension: "COLUMNS", startIndex: COL_HIDDEN_DATE, endIndex: COL_HIDDEN_DATE + 1 },
+      properties: { hiddenByUser: true },
+      fields: "hiddenByUser",
+    },
+  });
 
   requests.push({
     updateSheetProperties: {
-      properties: { sheetId, gridProperties: { hideGridlines: true, frozenRowCount: SUBHEADER_ROW, frozenColumnCount: 0 } },
+      properties: { sheetId, gridProperties: { hideGridlines: true, frozenRowCount: HEADER_ROW, frozenColumnCount: 0 } },
       fields: "gridProperties.hideGridlines,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
     },
   });
@@ -433,6 +473,7 @@ function buildFormatFields(format: sheets_v4.Schema$CellFormat): string {
   if (format.horizontalAlignment) parts.push("horizontalAlignment");
   if (format.verticalAlignment) parts.push("verticalAlignment");
   if (format.padding) parts.push("padding");
+  if (format.borders) parts.push("borders");
   if (format.numberFormat) parts.push("numberFormat");
   return parts.map((part) => `userEnteredFormat.${part}`).join(",");
 }
