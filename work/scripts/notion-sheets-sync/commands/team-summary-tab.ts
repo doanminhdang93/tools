@@ -168,7 +168,24 @@ async function ensureTeamSummaryTab(
       ? previousSelection
       : null;
 
-    if (currentColumns < COL_COUNT) {
+    requests.push({
+      unmergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: currentRows,
+          startColumnIndex: 0,
+          endColumnIndex: currentColumns,
+        },
+      },
+    });
+    if (currentColumns > COL_COUNT) {
+      requests.push({
+        deleteDimension: {
+          range: { sheetId, dimension: "COLUMNS", startIndex: COL_COUNT, endIndex: currentColumns },
+        },
+      });
+    } else if (currentColumns < COL_COUNT) {
       requests.push({
         appendDimension: { sheetId, dimension: "COLUMNS", length: COL_COUNT - currentColumns },
       });
@@ -179,14 +196,16 @@ async function ensureTeamSummaryTab(
       });
     }
     requests.push({
-      unmergeCells: {
+      repeatCell: {
         range: {
           sheetId,
           startRowIndex: 0,
           endRowIndex: Math.max(currentRows, requiredRows),
           startColumnIndex: 0,
-          endColumnIndex: Math.max(currentColumns, COL_COUNT),
+          endColumnIndex: COL_COUNT,
         },
+        cell: { userEnteredFormat: {} },
+        fields: "userEnteredFormat",
       },
     });
     if (requests.length > 0) {
@@ -265,7 +284,7 @@ async function writeTeamSummaryContent(
     const moneyFormula = isPo
       ? `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${poMoneyCol}:${poMoneyCol})`
       : `=SUMIF(${tabRef}!A:A,${dateHelperRef},${tabRef}!${oldMoneyCol}:${oldMoneyCol})`;
-    return [member.tabName, pointFormula, moneyFormula];
+    return [member.fullName || member.tabName, pointFormula, moneyFormula];
   });
   updates.push({
     range: `${TEAM_SUMMARY_TAB}!A${FIRST_MEMBER_ROW}:C${lastMemberRow}`,
@@ -416,7 +435,7 @@ async function applyTeamSummaryFormatting(
     },
   });
 
-  requests.push(setColumnWidth(sheetId, COL_MEMBER, 140));
+  requests.push(setColumnWidth(sheetId, COL_MEMBER, 200));
   requests.push(setColumnWidth(sheetId, COL_POINT, 110));
   requests.push(setColumnWidth(sheetId, COL_MONEY, 170));
 
