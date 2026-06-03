@@ -403,12 +403,12 @@ async function applyTeamSummaryFormatting(
   requests.push(numberFormatRange(sheetId, TOTAL_ROW, TOTAL_ROW + 1, COL_MONEY, COL_MONEY + 1, `#,##0" ₫"`));
 
   requests.push(styleRange(sheetId, HEADER_ROW, HEADER_ROW + 1, COL_MEMBER, COL_MONEY + 1, {
-    backgroundColor: HEADER_FILL,
+    backgroundColor: SELECTOR_LABEL_FILL,
     textFormat: {
       bold: true,
       fontSize: 12,
-      foregroundColor: TEXT_LIGHT,
-      foregroundColorStyle: { rgbColor: TEXT_LIGHT },
+      foregroundColor: TEXT_SUBTLE,
+      foregroundColorStyle: { rgbColor: TEXT_SUBTLE },
     },
     horizontalAlignment: "CENTER",
     verticalAlignment: "MIDDLE",
