@@ -20,7 +20,7 @@ loadDotenv({ path: ROOT_TOKEN_ENV_PATH });
 
 const MONTH_LABEL_PATTERN = /^\d{1,2}\/\d{4}$/;
 
-const STORY_POINT_ROLES = new Set(["po", "designer"]);
+const STORY_POINT_ROLES = new Set(["po", "designer", "marketer"]);
 const SKIP_ROLES = new Set(["pm"]);
 const TESTER_ROLE = "tester";
 const SUBLEAD_ROLE = "sublead";

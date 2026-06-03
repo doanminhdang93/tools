@@ -18,9 +18,11 @@ export function rolesIncludePo(roleField: string): boolean {
   return parseRoles(roleField).includes("po");
 }
 
+const LOW_RATE_ROLES = new Set(["po", "designer", "marketer"]);
+
 export function pointRateForRole(role: string): number {
   const normalizedRole = role.trim().toLowerCase();
-  if (normalizedRole === "po" || normalizedRole === "designer") return 22_000;
+  if (LOW_RATE_ROLES.has(normalizedRole)) return 22_000;
   return 45_000;
 }
 

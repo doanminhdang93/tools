@@ -311,7 +311,7 @@ async function main(): Promise<void> {
   const member = members.find((m) => m.tabName === args.tab);
   if (!member) throw new Error(`Tab "${args.tab}" not in Members`);
   const role = member.role;
-  const STORY_POINT_ROLES = new Set(["po", "designer"]);
+  const STORY_POINT_ROLES = new Set(["po", "designer", "marketer"]);
   const pointSource: PointSource = STORY_POINT_ROLES.has(role.trim().toLowerCase())
     ? "story_point"
     : "size_card";

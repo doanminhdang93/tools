@@ -23,7 +23,7 @@ if (!TAB || !MONTH || !WINDOW_END_ISO) {
   process.exit(1);
 }
 
-const STORY_POINT_ROLES = new Set(["po", "designer"]);
+const STORY_POINT_ROLES = new Set(["po", "designer", "marketer"]);
 
 async function main() {
   const appConfig = loadConfig();
