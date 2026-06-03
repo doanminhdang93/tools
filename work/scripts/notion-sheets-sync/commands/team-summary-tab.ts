@@ -404,7 +404,12 @@ async function applyTeamSummaryFormatting(
 
   requests.push(styleRange(sheetId, HEADER_ROW, HEADER_ROW + 1, COL_MEMBER, COL_MONEY + 1, {
     backgroundColor: HEADER_FILL,
-    textFormat: { bold: true, fontSize: 12, foregroundColor: TEXT_LIGHT },
+    textFormat: {
+      bold: true,
+      fontSize: 12,
+      foregroundColor: TEXT_LIGHT,
+      foregroundColorStyle: { rgbColor: TEXT_LIGHT },
+    },
     horizontalAlignment: "CENTER",
     verticalAlignment: "MIDDLE",
   }));
