@@ -104,10 +104,17 @@ async function buildTabSectionHeaderMap(
   members: Member[],
   sheets: SheetsClient,
   targetMonthLabel: string,
+  logger: Logger,
 ): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   for (const member of members) {
-    const rows = await sheets.readTabValues(member.tabName);
+    let rows: string[][];
+    try {
+      rows = await sheets.readTabValues(member.tabName);
+    } catch (cause) {
+      logger.info(`[${member.tabName}] tab not readable, skipping in Sublead formula map: ${(cause as Error).message}`);
+      continue;
+    }
     const parsed = parseTab(rows);
     const section = findSection(parsed, targetMonthLabel);
     if (!section) continue;
@@ -186,7 +193,7 @@ async function main(): Promise<void> {
 
     if (role === SUBLEAD_ROLE && !tabHeaderRowMap) {
       logger.info("Building tab → section-header map for Sublead review formulas...");
-      tabHeaderRowMap = await buildTabSectionHeaderMap(members, sheets, monthLabel);
+      tabHeaderRowMap = await buildTabSectionHeaderMap(members, sheets, monthLabel, logger);
       memberByNotionName = buildMemberByNotionName(members);
       logger.info(`  mapped ${tabHeaderRowMap.size} tabs with section "${monthLabel}"`);
     }

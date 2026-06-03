@@ -508,6 +508,13 @@ async function applyTeamSummaryFormatting(
 
   requests.push({
     updateDimensionProperties: {
+      range: { sheetId, dimension: "COLUMNS", startIndex: 0, endIndex: COL_HIDDEN_DATE },
+      properties: { hiddenByUser: false },
+      fields: "hiddenByUser",
+    },
+  });
+  requests.push({
+    updateDimensionProperties: {
       range: { sheetId, dimension: "COLUMNS", startIndex: COL_HIDDEN_DATE, endIndex: COL_HIDDEN_DATE + 1 },
       properties: { hiddenByUser: true },
       fields: "hiddenByUser",
