@@ -7,6 +7,13 @@ export const REVIEW_ELIGIBLE_ROLES = new Set(["developer", "sublead"]);
 export const PO_LAYOUT_TASK_TYPE_PO = "PO task";
 export const PO_LAYOUT_TASK_TYPE_TESTER = "Tester task";
 
+const PO_TIER_1_MAX_POINT = 136;
+const PO_TIER_2_MAX_POINT = 188;
+const PO_TIER_1_RATE = 22_000;
+const PO_TIER_2_RATE = 30_000;
+const PO_TIER_3_RATE = 35_000;
+const PO_TIER_2_CHUNK = PO_TIER_2_MAX_POINT - PO_TIER_1_MAX_POINT;
+
 export function parseRoles(roleField: string): string[] {
   return roleField
     .split(",")
@@ -124,7 +131,21 @@ export function poLayoutMoneyFormula(
   const baRange = `${baCol}${firstTaskRow}:${baCol}${lastTaskRow}`;
   const testRange = `${testCol}${firstTaskRow}:${testCol}${lastTaskRow}`;
   void headerRowOneBased;
-  return `=ROUND((SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_PO}",${baRange})+${TESTER_POINT_RATIO}*SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_TESTER}",${testRange}))*${POINT_VALUE_VND},0)`;
+
+  const poSum = `SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_PO}",${baRange})`;
+  const testerSum = `SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_TESTER}",${testRange})`;
+  const tier1Cap = `${PO_TIER_1_MAX_POINT}*${PO_TIER_1_RATE}`;
+  const tier2Chunk = `${PO_TIER_2_CHUNK}*${PO_TIER_2_RATE}`;
+  const poPart =
+    `IF(${poSum}<${PO_TIER_1_MAX_POINT},` +
+      `${poSum}*${PO_TIER_1_RATE},` +
+      `IF(${poSum}<${PO_TIER_2_MAX_POINT},` +
+        `${tier1Cap}+(${poSum}-${PO_TIER_1_MAX_POINT})*${PO_TIER_2_RATE},` +
+        `${tier1Cap}+${tier2Chunk}+(${poSum}-${PO_TIER_2_MAX_POINT})*${PO_TIER_3_RATE}` +
+      `)` +
+    `)`;
+  const testerPart = `${testerSum}*${TESTER_POINT_RATIO}*${POINT_VALUE_VND}`;
+  return `=${poPart}+${testerPart}`;
 }
 
 export function columnLetter(zeroBasedIndex: number): string {
