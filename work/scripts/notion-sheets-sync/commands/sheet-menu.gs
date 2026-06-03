@@ -86,12 +86,23 @@ function syncAllOtherMonth() {
   fireSync({ month });
 }
 
-function syncThisTabPrevMonth() { fireSync({ month: addMonthsLabel(-1), tab: thisTabName() }); }
-function syncThisTabCurrentMonth() { fireSync({ month: addMonthsLabel(0), tab: thisTabName() }); }
+function syncThisTabPrevMonth() {
+  if (isTeamSummaryTab()) { fireSync({ mode: "team_summary_only" }); return; }
+  fireSync({ month: addMonthsLabel(-1), tab: thisTabName() });
+}
+function syncThisTabCurrentMonth() {
+  if (isTeamSummaryTab()) { fireSync({ mode: "team_summary_only" }); return; }
+  fireSync({ month: addMonthsLabel(0), tab: thisTabName() });
+}
 function syncThisTabOtherMonth() {
+  if (isTeamSummaryTab()) { fireSync({ mode: "team_summary_only" }); return; }
   const month = promptForMonth();
   if (!month) return;
   fireSync({ month, tab: thisTabName() });
+}
+
+function isTeamSummaryTab() {
+  return thisTabName() === "Team Summary";
 }
 
 function openCustomSyncDialog() {
@@ -222,6 +233,7 @@ function fireSync(inputs) {
   const cleanInputs = {};
   if (inputs.tab) cleanInputs.tab = inputs.tab;
   if (inputs.month) cleanInputs.month = inputs.month;
+  if (inputs.mode) cleanInputs.mode = inputs.mode;
 
   const response = UrlFetchApp.fetch(dispatchUrl, {
     method: "post",
@@ -232,7 +244,14 @@ function fireSync(inputs) {
   });
   const code = response.getResponseCode();
   if (code === 204) {
-    const scope = inputs.tab ? `tab "${inputs.tab}"` : "all members";
+    let scope;
+    if (inputs.mode === "team_summary_only") {
+      scope = "Team Summary refresh";
+    } else if (inputs.tab) {
+      scope = `tab "${inputs.tab}"`;
+    } else {
+      scope = "all members";
+    }
     const monthNote = inputs.month ? ` — ${inputs.month}` : "";
     SpreadsheetApp.getActive().toast(`Sync triggered for ${scope}${monthNote}`, "🔄 Sync", 6);
   } else {

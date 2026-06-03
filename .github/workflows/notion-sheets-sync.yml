@@ -11,6 +11,11 @@ on:
         description: Target month M/YYYY (leave empty for current month)
         required: false
         type: string
+      mode:
+        description: "full = sync members then refresh Team Summary; team_summary_only = just refresh Team Summary"
+        required: false
+        type: string
+        default: full
 
 concurrency:
   group: notion-sheets-sync
@@ -41,6 +46,7 @@ jobs:
           printf '%s' "$SERVICE_ACCOUNT_JSON" > .secrets/service-account.json
 
       - name: Run sync
+        if: ${{ inputs.mode != 'team_summary_only' }}
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
@@ -63,3 +69,14 @@ jobs:
           fi
           echo "Running: npm run sync -- ${args[*]}"
           npm run sync -- "${args[@]}"
+
+      - name: Refresh Team Summary tab
+        if: ${{ !cancelled() }}
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          GOOGLE_SERVICE_ACCOUNT_KEY_FILE: .secrets/service-account.json
+        run: |
+          set -euo pipefail
+          npx tsx commands/team-summary-tab.ts
