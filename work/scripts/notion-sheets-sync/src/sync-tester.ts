@@ -351,7 +351,10 @@ async function replaceMonthSection(
     const firstTaskRow = writeStartRow + 1;
     const lastTaskRow = writeStartRow + tasks.length;
     headerRow[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
-    headerRow[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, writeStartRow);
+    headerRow[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, writeStartRow, {
+      firstTaskRow,
+      lastTaskRow,
+    });
   }
 
   const taskRowsAsArrays = tasks.map((task, index) => {

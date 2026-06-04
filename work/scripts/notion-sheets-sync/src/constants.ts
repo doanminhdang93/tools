@@ -33,21 +33,39 @@ export function pointRateForRole(role: string): number {
   return 45_000;
 }
 
+export interface TesterTaskRange {
+  firstTaskRow: number;
+  lastTaskRow: number;
+}
+
 export function moneyFormulaForRole(
   role: string,
   pointCol: string,
   headerRowOneBased: number,
+  testerTaskRange?: TesterTaskRange,
 ): string {
   const pointRate = pointRateForRole(role);
   const normalizedRole = role.trim().toLowerCase();
   if (normalizedRole === "tester") {
-    return `=${pointCol}${headerRowOneBased}*${TESTER_POINT_RATIO}*${pointRate}`;
+    if (!testerTaskRange) {
+      return `=${pointCol}${headerRowOneBased}*${TESTER_POINT_RATIO}*${pointRate}`;
+    }
+    return testerMoneyFormula(pointCol, testerTaskRange);
   }
   if (normalizedRole === "sublead") {
     const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
     return `=(${pointCol}${headerRowOneBased}+${reviewCol}${headerRowOneBased})*${pointRate}`;
   }
   return `=${pointCol}${headerRowOneBased}*${pointRate}`;
+}
+
+function testerMoneyFormula(pointCol: string, range: TesterTaskRange): string {
+  const assigneesCol = columnLetter(COLUMN_INDEX.assignees);
+  const pointRange = `${pointCol}${range.firstTaskRow}:${pointCol}${range.lastTaskRow}`;
+  const assigneesRange = `${assigneesCol}${range.firstTaskRow}:${assigneesCol}${range.lastTaskRow}`;
+  const coassigneePoints = `SUMIF(${assigneesRange},"*,*",${pointRange})`;
+  const solePoints = `(SUM(${pointRange})-${coassigneePoints})`;
+  return `=${solePoints}*${POINT_VALUE_VND}+${coassigneePoints}*${TESTER_POINT_RATIO}*${POINT_VALUE_VND}`;
 }
 
 export const SHEET_COLUMN_HEADERS = [

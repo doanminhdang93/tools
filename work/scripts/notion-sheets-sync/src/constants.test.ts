@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { isSyncableStatus, SYNCABLE_STATUSES, toSheetApp, toSheetStatus } from "./constants.ts";
+import {
+  isSyncableStatus,
+  moneyFormulaForRole,
+  SYNCABLE_STATUSES,
+  toSheetApp,
+  toSheetStatus,
+} from "./constants.ts";
 
 describe("isSyncableStatus", () => {
   it("accepts the canonical Notion casing", () => {
@@ -65,5 +71,32 @@ describe("toSheetApp", () => {
     expect(toSheetApp("PPU")).toBe("PPU");
     expect(toSheetApp("CKU")).toBe("CKU");
     expect(toSheetApp("")).toBe("");
+  });
+});
+
+describe("moneyFormulaForRole — tester", () => {
+  it("splits sole-tester vs coassignee using SUMIF on the assignees column", () => {
+    const formula = moneyFormulaForRole("tester", "F", 6, { firstTaskRow: 7, lastTaskRow: 20 });
+    expect(formula).toBe(
+      '=(SUM(F7:F20)-SUMIF(I7:I20,"*,*",F7:F20))*45000+SUMIF(I7:I20,"*,*",F7:F20)*0.3*45000',
+    );
+  });
+
+  it("falls back to the flat 30% formula when no task range is given", () => {
+    expect(moneyFormulaForRole("tester", "F", 6)).toBe("=F6*0.3*45000");
+  });
+});
+
+describe("moneyFormulaForRole — other roles", () => {
+  it("uses 45,000 × point header for developer", () => {
+    expect(moneyFormulaForRole("developer", "F", 6)).toBe("=F6*45000");
+  });
+
+  it("adds review points for sublead", () => {
+    expect(moneyFormulaForRole("sublead", "F", 6)).toBe("=(F6+G6)*45000");
+  });
+
+  it("uses 22,000 × point header for designer", () => {
+    expect(moneyFormulaForRole("designer", "F", 6)).toBe("=F6*22000");
   });
 });
