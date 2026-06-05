@@ -6,6 +6,8 @@ import { pushPointToNotion } from "./notion/update.ts";
 import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheets/parser.ts";
 import {
   pointRateForRole,
+  isTieredRole,
+  tieredMoneyForPoints,
   moneyFormulaForRole,
   SHEET_COLUMN_COUNT,
   COLUMN_INDEX,
@@ -217,7 +219,11 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
         (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
         0,
       );
-  const totalMoney = isPoLayout ? 0 : totalPoints * pointRate;
+  const totalMoney = isPoLayout
+    ? 0
+    : isTieredRole(role)
+      ? tieredMoneyForPoints(totalPoints)
+      : totalPoints * pointRate;
   const headerRow = isPoLayout
     ? buildPoMonthHeaderRow(targetMonthLabel, writeStartRow, allTaskRows.length)
     : buildMonthHeaderRow(

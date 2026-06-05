@@ -26,11 +26,42 @@ export function rolesIncludePo(roleField: string): boolean {
 }
 
 const LOW_RATE_ROLES = new Set(["po", "designer", "marketer"]);
+const TIERED_ROLES = new Set(["po", "designer", "marketer"]);
 
 export function pointRateForRole(role: string): number {
   const normalizedRole = role.trim().toLowerCase();
   if (LOW_RATE_ROLES.has(normalizedRole)) return 22_000;
   return 45_000;
+}
+
+export function isTieredRole(role: string): boolean {
+  return TIERED_ROLES.has(role.trim().toLowerCase());
+}
+
+export function tieredMoneyForPoints(points: number): number {
+  if (points < PO_TIER_1_MAX_POINT) return points * PO_TIER_1_RATE;
+  if (points < PO_TIER_2_MAX_POINT) {
+    return PO_TIER_1_MAX_POINT * PO_TIER_1_RATE + (points - PO_TIER_1_MAX_POINT) * PO_TIER_2_RATE;
+  }
+  return (
+    PO_TIER_1_MAX_POINT * PO_TIER_1_RATE
+    + PO_TIER_2_CHUNK * PO_TIER_2_RATE
+    + (points - PO_TIER_2_MAX_POINT) * PO_TIER_3_RATE
+  );
+}
+
+function tieredPointSheetFormula(pointExpression: string): string {
+  const tier1Cap = `${PO_TIER_1_MAX_POINT}*${PO_TIER_1_RATE}`;
+  const tier2Chunk = `${PO_TIER_2_CHUNK}*${PO_TIER_2_RATE}`;
+  return (
+    `IF(${pointExpression}<${PO_TIER_1_MAX_POINT},`
+      + `${pointExpression}*${PO_TIER_1_RATE},`
+      + `IF(${pointExpression}<${PO_TIER_2_MAX_POINT},`
+        + `${tier1Cap}+(${pointExpression}-${PO_TIER_1_MAX_POINT})*${PO_TIER_2_RATE},`
+        + `${tier1Cap}+${tier2Chunk}+(${pointExpression}-${PO_TIER_2_MAX_POINT})*${PO_TIER_3_RATE}`
+      + `)`
+    + `)`
+  );
 }
 
 export interface TesterTaskRange {
@@ -55,6 +86,10 @@ export function moneyFormulaForRole(
   if (normalizedRole === "sublead") {
     const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
     return `=(${pointCol}${headerRowOneBased}+${reviewCol}${headerRowOneBased})*${pointRate}`;
+  }
+  if (normalizedRole === "designer" || normalizedRole === "marketer") {
+    const pointCell = `${pointCol}${headerRowOneBased}`;
+    return `=${tieredPointSheetFormula(pointCell)}`;
   }
   return `=${pointCol}${headerRowOneBased}*${pointRate}`;
 }
@@ -152,16 +187,7 @@ export function poLayoutMoneyFormula(
 
   const poSum = `SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_PO}",${baRange})`;
   const testerSum = `SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_TESTER}",${testRange})`;
-  const tier1Cap = `${PO_TIER_1_MAX_POINT}*${PO_TIER_1_RATE}`;
-  const tier2Chunk = `${PO_TIER_2_CHUNK}*${PO_TIER_2_RATE}`;
-  const poPart =
-    `IF(${poSum}<${PO_TIER_1_MAX_POINT},` +
-      `${poSum}*${PO_TIER_1_RATE},` +
-      `IF(${poSum}<${PO_TIER_2_MAX_POINT},` +
-        `${tier1Cap}+(${poSum}-${PO_TIER_1_MAX_POINT})*${PO_TIER_2_RATE},` +
-        `${tier1Cap}+${tier2Chunk}+(${poSum}-${PO_TIER_2_MAX_POINT})*${PO_TIER_3_RATE}` +
-      `)` +
-    `)`;
+  const poPart = tieredPointSheetFormula(poSum);
   const testerPart = `${testerSum}*${TESTER_POINT_RATIO}*${POINT_VALUE_VND}`;
   return `=${poPart}+${testerPart}`;
 }

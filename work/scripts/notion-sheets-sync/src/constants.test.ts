@@ -3,9 +3,12 @@ import {
   isSyncableStatus,
   moneyFormulaForRole,
   SYNCABLE_STATUSES,
+  tieredMoneyForPoints,
   toSheetApp,
   toSheetStatus,
 } from "./constants.ts";
+
+const TIERED_FORMULA = "IF(F6<136,F6*22000,IF(F6<188,136*22000+(F6-136)*30000,136*22000+52*30000+(F6-188)*35000))";
 
 describe("isSyncableStatus", () => {
   it("accepts the canonical Notion casing", () => {
@@ -96,7 +99,30 @@ describe("moneyFormulaForRole — other roles", () => {
     expect(moneyFormulaForRole("sublead", "F", 6)).toBe("=(F6+G6)*45000");
   });
 
-  it("uses 22,000 × point header for designer", () => {
-    expect(moneyFormulaForRole("designer", "F", 6)).toBe("=F6*22000");
+  it("uses the 3-tier formula for designer (same as PO part)", () => {
+    expect(moneyFormulaForRole("designer", "F", 6)).toBe(`=${TIERED_FORMULA}`);
+  });
+
+  it("uses the 3-tier formula for marketer", () => {
+    expect(moneyFormulaForRole("marketer", "F", 6)).toBe(`=${TIERED_FORMULA}`);
+  });
+});
+
+describe("tieredMoneyForPoints", () => {
+  it("tier 1: < 136 → points × 22,000", () => {
+    expect(tieredMoneyForPoints(0)).toBe(0);
+    expect(tieredMoneyForPoints(100)).toBe(2_200_000);
+    expect(tieredMoneyForPoints(135)).toBe(2_970_000);
+  });
+
+  it("tier 2: 136..187 → 136×22k + remainder×30k", () => {
+    expect(tieredMoneyForPoints(136)).toBe(136 * 22_000);
+    expect(tieredMoneyForPoints(150)).toBe(136 * 22_000 + 14 * 30_000);
+    expect(tieredMoneyForPoints(187)).toBe(136 * 22_000 + 51 * 30_000);
+  });
+
+  it("tier 3: ≥ 188 → 136×22k + 52×30k + remainder×35k", () => {
+    expect(tieredMoneyForPoints(188)).toBe(136 * 22_000 + 52 * 30_000);
+    expect(tieredMoneyForPoints(200)).toBe(136 * 22_000 + 52 * 30_000 + 12 * 35_000);
   });
 });
