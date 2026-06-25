@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "../config.ts";
+import { withRetry } from "./retry.ts";
 
 export interface Member {
   tabName: string;
@@ -21,11 +22,19 @@ export async function readMembers(): Promise<Member[]> {
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   });
   const sheetsApi = google.sheets({ version: "v4", auth: googleAuth });
-  const response = await sheetsApi.spreadsheets.values.get({
-    spreadsheetId: appConfig.googleSheetsId,
-    range: `${MEMBERS_TAB}!A2:F`,
-    valueRenderOption: "FORMATTED_VALUE",
-  });
+  const response = await withRetry(
+    () => sheetsApi.spreadsheets.values.get({
+      spreadsheetId: appConfig.googleSheetsId,
+      range: `${MEMBERS_TAB}!A2:F`,
+      valueRenderOption: "FORMATTED_VALUE",
+    }),
+    {
+      label: "readMembers",
+      onRetry: (attempt, cause) => {
+        console.warn(`[Members] read attempt ${attempt} failed: ${cause.message} — retrying`);
+      },
+    },
+  );
   const rows = response.data.values ?? [];
   const members: Member[] = [];
   for (const row of rows) {

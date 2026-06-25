@@ -2,12 +2,21 @@ import { google, sheets_v4 } from "googleapis";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { SHEET_COLUMN_COUNT } from "../constants.ts";
+import { withRetry } from "../util/retry.ts";
 
 export interface SheetsClient {
   readTabValues(tabName: string): Promise<string[][]>;
   readColumnABackgrounds(tabName: string): Promise<RgbColor[]>;
-  writeRange(tabName: string, startRow: number, rows: string[][]): Promise<void>;
-  insertEmptyRows(tabName: string, beforeRow: number, count: number): Promise<void>;
+  writeRange(
+    tabName: string,
+    startRow: number,
+    rows: string[][],
+  ): Promise<void>;
+  insertEmptyRows(
+    tabName: string,
+    beforeRow: number,
+    count: number,
+  ): Promise<void>;
   deleteRows(tabName: string, startRow: number, endRow: number): Promise<void>;
   applySectionStyle(tabName: string, plan: SectionStylePlan): Promise<void>;
   listTabNames(): Promise<string[]>;
@@ -43,17 +52,38 @@ export function createSheetsClient(
   const tabSheetIdCache = new Map<string, number>();
 
   return {
-    readTabValues: (tabName) => readTabValues(sheetsApi, spreadsheetId, tabName),
+    readTabValues: (tabName) =>
+      readTabValues(sheetsApi, spreadsheetId, tabName),
     readColumnABackgrounds: (tabName) =>
       readColumnABackgrounds(sheetsApi, spreadsheetId, tabName),
     writeRange: (tabName, startRow, rows) =>
       writeRange(sheetsApi, spreadsheetId, tabName, startRow, rows),
     insertEmptyRows: (tabName, beforeRow, count) =>
-      insertEmptyRows(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, beforeRow, count),
+      insertEmptyRows(
+        sheetsApi,
+        spreadsheetId,
+        tabSheetIdCache,
+        tabName,
+        beforeRow,
+        count,
+      ),
     deleteRows: (tabName, startRow, endRow) =>
-      deleteRows(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, startRow, endRow),
+      deleteRows(
+        sheetsApi,
+        spreadsheetId,
+        tabSheetIdCache,
+        tabName,
+        startRow,
+        endRow,
+      ),
     applySectionStyle: (tabName, plan) =>
-      applySectionStyle(sheetsApi, spreadsheetId, tabSheetIdCache, tabName, plan),
+      applySectionStyle(
+        sheetsApi,
+        spreadsheetId,
+        tabSheetIdCache,
+        tabName,
+        plan,
+      ),
     listTabNames: () => listTabNames(sheetsApi, spreadsheetId),
     rawApi: sheetsApi,
     spreadsheetId,
@@ -69,21 +99,28 @@ async function insertEmptyRows(
   count: number,
 ): Promise<void> {
   if (count <= 0) return;
-  const sheetId = await lookupTabSheetId(sheetsApi, spreadsheetId, tabSheetIdCache, tabName);
+  const sheetId = await lookupTabSheetId(
+    sheetsApi,
+    spreadsheetId,
+    tabSheetIdCache,
+    tabName,
+  );
   await sheetsApi.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: {
-      requests: [{
-        insertDimension: {
-          range: {
-            sheetId,
-            dimension: "ROWS",
-            startIndex: beforeRow - 1,
-            endIndex: beforeRow - 1 + count,
+      requests: [
+        {
+          insertDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: beforeRow - 1,
+              endIndex: beforeRow - 1 + count,
+            },
+            inheritFromBefore: false,
           },
-          inheritFromBefore: false,
         },
-      }],
+      ],
     },
   });
 }
@@ -97,20 +134,27 @@ async function deleteRows(
   endRow: number,
 ): Promise<void> {
   if (endRow < startRow) return;
-  const sheetId = await lookupTabSheetId(sheetsApi, spreadsheetId, tabSheetIdCache, tabName);
+  const sheetId = await lookupTabSheetId(
+    sheetsApi,
+    spreadsheetId,
+    tabSheetIdCache,
+    tabName,
+  );
   await sheetsApi.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: {
-      requests: [{
-        deleteDimension: {
-          range: {
-            sheetId,
-            dimension: "ROWS",
-            startIndex: startRow - 1,
-            endIndex: endRow,
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: startRow - 1,
+              endIndex: endRow,
+            },
           },
         },
-      }],
+      ],
     },
   });
 }
@@ -154,7 +198,33 @@ function buildSheetsApi(serviceAccountKeyFile: string): sheets_v4.Sheets {
     credentials,
     scopes: [SHEETS_API_SCOPE],
   });
-  return google.sheets({ version: "v4", auth: googleAuth });
+  const sheetsApi = google.sheets({ version: "v4", auth: googleAuth });
+  return wrapSheetsApiWithRetry(sheetsApi);
+}
+
+function wrapSheetsApiWithRetry(sheetsApi: sheets_v4.Sheets): sheets_v4.Sheets {
+  const spreadsheets = sheetsApi.spreadsheets;
+  patchMethod(spreadsheets, "get", "spreadsheets.get");
+  patchMethod(spreadsheets, "batchUpdate", "spreadsheets.batchUpdate");
+  const values = spreadsheets.values;
+  patchMethod(values, "get", "spreadsheets.values.get");
+  patchMethod(values, "update", "spreadsheets.values.update");
+  patchMethod(values, "batchUpdate", "spreadsheets.values.batchUpdate");
+  return sheetsApi;
+}
+
+function patchMethod(target: object, methodName: string, label: string): void {
+  const indexable = target as Record<string, unknown>;
+  const original = indexable[methodName];
+  if (typeof original !== "function") return;
+  const boundOriginal = (original as (...args: unknown[]) => Promise<unknown>).bind(target);
+  indexable[methodName] = (...args: unknown[]) =>
+    withRetry(() => boundOriginal(...args), {
+      label,
+      onRetry: (attempt, cause) => {
+        console.warn(`[sheets] ${label} attempt ${attempt} failed: ${cause.message} — retrying`);
+      },
+    });
 }
 
 async function readTabValues(
@@ -196,7 +266,12 @@ async function applySectionStyle(
   tabName: string,
   plan: SectionStylePlan,
 ): Promise<void> {
-  const sheetId = await lookupTabSheetId(sheetsApi, spreadsheetId, tabSheetIdCache, tabName);
+  const sheetId = await lookupTabSheetId(
+    sheetsApi,
+    spreadsheetId,
+    tabSheetIdCache,
+    tabName,
+  );
 
   const requests: sheets_v4.Schema$Request[] = [
     paintSeparatorAcrossAllColumnsRequest(
@@ -204,7 +279,11 @@ async function applySectionStyle(
       plan.referenceSeparatorRow,
       plan.destinationSeparatorRow,
     ),
-    copyFormatRequest(sheetId, plan.referenceHeaderRow, plan.destinationHeaderRow),
+    copyFormatRequest(
+      sheetId,
+      plan.referenceHeaderRow,
+      plan.destinationHeaderRow,
+    ),
     clearDataValidationRequest(sheetId, plan.destinationSeparatorRow),
     clearDataValidationRequest(sheetId, plan.destinationHeaderRow),
   ];
@@ -266,7 +345,10 @@ function clearDataValidationRequest(
   };
 }
 
-function fullWidthRowRange(sheetId: number, rowOneBased: number): sheets_v4.Schema$GridRange {
+function fullWidthRowRange(
+  sheetId: number,
+  rowOneBased: number,
+): sheets_v4.Schema$GridRange {
   return {
     sheetId,
     startRowIndex: rowOneBased - 1,
@@ -301,7 +383,8 @@ async function lookupTabSheetId(
 
 // 1 → "A", 26 → "Z", 27 → "AA", 702 → "ZZ", 703 → "AAA"
 export function columnLetterFor(columnNumber: number): string {
-  if (columnNumber < 1) throw new Error(`columnLetterFor: expected >= 1, got ${columnNumber}`);
+  if (columnNumber < 1)
+    throw new Error(`columnLetterFor: expected >= 1, got ${columnNumber}`);
 
   let letters = "";
   let remaining = columnNumber;

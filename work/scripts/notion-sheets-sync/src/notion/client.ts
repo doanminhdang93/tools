@@ -1,4 +1,5 @@
 import { Client } from "@notionhq/client";
+import { withRetry } from "../util/retry.ts";
 
 export interface NotionPage {
   id: string;
@@ -30,12 +31,20 @@ export async function fetchAllPages(
     : undefined;
 
   do {
-    const response = await client.databases.query({
-      database_id: databaseId,
-      start_cursor: pageCursor,
-      page_size: NOTION_PAGE_SIZE,
-      ...(filter ? { filter } : {}),
-    });
+    const response = await withRetry(
+      () => client.databases.query({
+        database_id: databaseId,
+        start_cursor: pageCursor,
+        page_size: NOTION_PAGE_SIZE,
+        ...(filter ? { filter } : {}),
+      }),
+      {
+        label: "notion.databases.query",
+        onRetry: (attempt, cause) => {
+          console.warn(`[notion] query attempt ${attempt} failed: ${cause.message} — retrying`);
+        },
+      },
+    );
 
     for (const result of response.results) {
       if (!("properties" in result)) continue;
