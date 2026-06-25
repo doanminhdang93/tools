@@ -1,9 +1,8 @@
 import "./util/fetch-polyfill.ts";
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
-import { Client as NotionClient } from "@notionhq/client";
 import { loadConfig } from "./config.ts";
-import { fetchAllPages } from "./notion/client.ts";
+import { fetchAllPages, createNotionClient } from "./notion/client.ts";
 import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab, type SyncTabResult } from "./sync.ts";
@@ -170,7 +169,7 @@ async function main(): Promise<void> {
   logger.info(`Fetched ${allPages.length} pages.`);
 
   const sheets = createSheetsClient(appConfig.googleServiceAccountKeyFile, appConfig.googleSheetsId);
-  const notionClient = new NotionClient({ auth: appConfig.notionApiKey });
+  const notionClient = createNotionClient(appConfig.notionApiKey);
   const monthLabel = parsed.monthLabel ?? currentMonthLabel(new Date());
 
   interface SyncedSummary {

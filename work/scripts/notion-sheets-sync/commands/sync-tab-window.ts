@@ -1,8 +1,7 @@
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
-import { Client as NotionClient } from "@notionhq/client";
 import { loadConfig } from "../src/config.ts";
-import { fetchAllPages } from "../src/notion/client.ts";
+import { fetchAllPages, createNotionClient } from "../src/notion/client.ts";
 import { syncTab } from "../src/sync.ts";
 import { createSheetsClient } from "../src/sheets/client.ts";
 import { createLogger } from "../src/logger.ts";
@@ -55,7 +54,7 @@ async function main() {
   logger.info(`Fetched ${allPages.length} pages.`);
 
   const sheets = createSheetsClient(appConfig.googleServiceAccountKeyFile, appConfig.googleSheetsId);
-  const notionClient = new NotionClient({ auth: appConfig.notionApiKey });
+  const notionClient = createNotionClient(appConfig.notionApiKey);
   await syncTab({
     tabName: TAB,
     assigneeName: notionName,

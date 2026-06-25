@@ -2,7 +2,7 @@ import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { google } from "googleapis";
-import { Client as NotionClient } from "@notionhq/client";
+import { createNotionClient } from "../src/notion/client.ts";
 import { loadConfig } from "../src/config.ts";
 import { COLUMN_INDEX, MONTH_HEADER_PATTERN, columnLetter, toSheetApp, toSheetStatus, moneyFormulaForRole } from "../src/constants.ts";
 import { readMembers } from "../src/util/members.ts";
@@ -22,7 +22,7 @@ if (!TARGET_TAB || !NOTION_PAGE_ID) {
 
 async function main() {
   const appConfig = loadConfig();
-  const notion = new NotionClient({ auth: appConfig.notionApiKey });
+  const notion = createNotionClient(appConfig.notionApiKey);
   const page = await notion.pages.retrieve({ page_id: NOTION_PAGE_ID });
   if (!("properties" in page)) {
     throw new Error("Page has no properties");

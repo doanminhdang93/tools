@@ -2,7 +2,7 @@ import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { google, sheets_v4 } from "googleapis";
-import { Client as NotionClient } from "@notionhq/client";
+import { createNotionClient } from "../src/notion/client.ts";
 import { loadConfig } from "../src/config.ts";
 import {
   COLUMN_INDEX,
@@ -142,7 +142,7 @@ async function fetchNotionPagesByIds(
   notionApiKey: string,
   pageIds: string[],
 ): Promise<Map<string, NotionPage>> {
-  const notion = new NotionClient({ auth: notionApiKey });
+  const notion = createNotionClient(notionApiKey);
   const result = new Map<string, NotionPage>();
   for (const pageId of pageIds) {
     try {

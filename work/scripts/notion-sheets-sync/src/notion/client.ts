@@ -1,5 +1,12 @@
 import { Client } from "@notionhq/client";
+import nodeFetch from "node-fetch";
 import { withRetry } from "../util/retry.ts";
+
+const fetchOverride = nodeFetch as unknown as (typeof globalThis)["fetch"];
+
+export function createNotionClient(notionApiKey: string): Client {
+  return new Client({ auth: notionApiKey, fetch: fetchOverride });
+}
 
 export interface NotionPage {
   id: string;
@@ -18,7 +25,7 @@ export async function fetchAllPages(
   databaseId: string,
   options: FetchPagesOptions = {},
 ): Promise<NotionPage[]> {
-  const client = new Client({ auth: notionApiKey });
+  const client = createNotionClient(notionApiKey);
   const collected: NotionPage[] = [];
   let trashedSkipped = 0;
   let pageCursor: string | undefined = undefined;
