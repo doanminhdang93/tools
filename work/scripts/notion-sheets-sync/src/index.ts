@@ -1,3 +1,4 @@
+import "./util/fetch-polyfill.ts";
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { Client as NotionClient } from "@notionhq/client";
