@@ -1,4 +1,3 @@
-import "../src/util/fetch-polyfill.ts";
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";

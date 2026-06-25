@@ -1,4 +1,3 @@
-import "./util/fetch-polyfill.ts";
 import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
