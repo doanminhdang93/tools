@@ -52,8 +52,9 @@ jobs:
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
           GOOGLE_SERVICE_ACCOUNT_KEY_FILE: .secrets/service-account.json
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          NOTIFY_ON_ERROR_CHANNEL: ${{ secrets.NOTIFY_ON_ERROR_CHANNEL }}
+          # [slack-disabled] temporarily off — uncomment both lines to re-enable Slack notifications
+          # SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          # NOTIFY_ON_ERROR_CHANNEL: ${{ secrets.NOTIFY_ON_ERROR_CHANNEL }}
           INPUT_TAB: ${{ inputs.tab }}
           INPUT_MONTH: ${{ inputs.month }}
         run: |
