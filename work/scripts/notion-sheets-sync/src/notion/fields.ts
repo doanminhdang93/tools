@@ -1,8 +1,13 @@
 import type { NotionPage } from "./client.ts";
 
 export function titleOf(page: NotionPage): string {
-  const titleProperty = page.properties["product"];
-  if (!titleProperty || titleProperty.type !== "title") return "";
+  // Notion guarantees exactly one title-typed property per database, but its
+  // name can change (it was "product"; it has since been renamed to ""). Locate
+  // it by type so a rename never silently blanks every synced task title.
+  const titleProperty = Object.values(page.properties).find(
+    (property) => property.type === "title",
+  );
+  if (!titleProperty) return "";
   const segments = (titleProperty as { title?: { plain_text?: string }[] }).title ?? [];
   return segments.map((segment) => segment.plain_text ?? "").join("");
 }
