@@ -530,7 +530,10 @@ function buildMonthHeaderRow(
   const lastTaskRow = headerRowIndex + taskRowCount;
   const pointCol = columnLetter(COLUMN_INDEX.point);
   row[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
-  row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowIndex);
+  row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowIndex, {
+    firstTaskRow,
+    lastTaskRow,
+  });
   if (isReviewEligible) {
     if (subleadHeaderFormula) {
       row[COLUMN_INDEX.reviewPoint] = subleadHeaderFormula;

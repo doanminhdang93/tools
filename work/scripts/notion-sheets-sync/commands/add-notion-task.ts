@@ -162,7 +162,10 @@ async function main() {
       values: [
         [
           `=SUM(${pointCol}${firstTaskOneBased}:${pointCol}${lastTaskOneBased})`,
-          moneyFormulaForRole(memberRole, pointCol, headerOneBased),
+          moneyFormulaForRole(memberRole, pointCol, headerOneBased, {
+            firstTaskRow: firstTaskOneBased,
+            lastTaskRow: lastTaskOneBased,
+          }),
         ],
       ],
     },

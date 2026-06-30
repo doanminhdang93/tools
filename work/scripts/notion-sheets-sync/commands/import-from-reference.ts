@@ -249,7 +249,10 @@ function buildHeaderRow(monthLabel: string, headerRowOneBased: number, taskCount
   const lastTaskRow = headerRowOneBased + taskCount;
   const pointCol = columnLetter(COLUMN_INDEX.point);
   row[COLUMN_INDEX.point] = `=SUM(${pointCol}${firstTaskRow}:${pointCol}${lastTaskRow})`;
-  row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowOneBased);
+  row[COLUMN_INDEX.money] = moneyFormulaForRole(role, pointCol, headerRowOneBased, {
+    firstTaskRow,
+    lastTaskRow,
+  });
   return row;
 }
 
