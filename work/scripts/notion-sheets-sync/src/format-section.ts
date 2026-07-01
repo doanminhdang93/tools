@@ -61,12 +61,16 @@ export async function formatSection(args: FormatSectionArgs): Promise<void> {
   }
   console.log(`[${tabName}] formatting "${monthLabel}": header row ${headerRowZeroBased + 1}, tasks ${headerRowZeroBased + 2}-${lastTaskRowZeroBased + 1}`);
 
-  const closingSeparatorPreview = lastTaskRowZeroBased + 1;
-  if (closingSeparatorPreview >= rowCount) {
+  // When the section reaches the grid's end there is no row to hold the closing
+  // separator, so append exactly one — that appended row IS the separator. Appending
+  // a batch of spare rows would leave orphans that inherit the mint separator fill and
+  // survive forever: they are created after compaction runs, so nothing cleans them up.
+  const sectionReachesGridEnd = lastTaskRowZeroBased + 1 >= rowCount;
+  if (sectionReachesGridEnd) {
     await sheetsApi.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
-        requests: [{ appendDimension: { sheetId, dimension: "ROWS", length: 20 } }],
+        requests: [{ appendDimension: { sheetId, dimension: "ROWS", length: 1 } }],
       },
     });
   }
@@ -88,7 +92,7 @@ export async function formatSection(args: FormatSectionArgs): Promise<void> {
   const separatorAboveZeroBased = headerRowZeroBased - 1;
 
   const closingSeparatorZeroBased = lastTaskRowZeroBased + 1;
-  if (closingSeparatorZeroBased >= rowCount || !isRowEmpty(rows, closingSeparatorZeroBased)) {
+  if (!sectionReachesGridEnd && !isRowEmpty(rows, closingSeparatorZeroBased)) {
     requests.push({
       insertDimension: {
         range: { sheetId, dimension: "ROWS", startIndex: closingSeparatorZeroBased, endIndex: closingSeparatorZeroBased + 1 },
