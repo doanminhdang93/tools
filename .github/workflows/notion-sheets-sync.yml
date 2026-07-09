@@ -18,8 +18,11 @@ on:
         default: full
 
 concurrency:
-  group: notion-sheets-sync
-  cancel-in-progress: false
+  # Group per target tab so different people syncing different tabs run in
+  # parallel — a fixed group serialized (and cancelled) everyone needlessly.
+  # Same-tab reruns collapse to the latest; the sync is idempotent (upsert).
+  group: notion-sheets-sync-${{ inputs.tab || 'all' }}
+  cancel-in-progress: true
 
 jobs:
   sync:
