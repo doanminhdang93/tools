@@ -20,10 +20,10 @@ describe("isSyncableStatus", () => {
   it("accepts mismatched casing", () => {
     expect(isSyncableStatus("done")).toBe(true);
     expect(isSyncableStatus("DONE")).toBe(true);
-    expect(isSyncableStatus("testing PRO")).toBe(true);
+    expect(isSyncableStatus("testing prod")).toBe(true);
     expect(isSyncableStatus("waiting to test")).toBe(true);
-    expect(isSyncableStatus("WAIT TO REVIEW")).toBe(true);
-    expect(isSyncableStatus("wait to live")).toBe(true);
+    expect(isSyncableStatus("WAITING TO REVIEW")).toBe(true);
+    expect(isSyncableStatus("waiting to live")).toBe(true);
   });
 
   it("trims surrounding whitespace before comparing", () => {
@@ -34,6 +34,8 @@ describe("isSyncableStatus", () => {
   it("rejects statuses that are not in the whitelist", () => {
     expect(isSyncableStatus("To do")).toBe(false);
     expect(isSyncableStatus("Doing")).toBe(false);
+    expect(isSyncableStatus("Feedback")).toBe(false);
+    expect(isSyncableStatus("QA/UAT")).toBe(false);
     expect(isSyncableStatus("Archived")).toBe(false);
     expect(isSyncableStatus("")).toBe(false);
   });
@@ -45,17 +47,13 @@ describe("toSheetStatus", () => {
     expect(toSheetStatus("Testing")).toBe("Testing");
     expect(toSheetStatus("Reviewing")).toBe("Reviewing");
     expect(toSheetStatus("Waiting To Test")).toBe("Waiting To Test");
-    expect(toSheetStatus("Testing Pro")).toBe("Testing Pro");
+    expect(toSheetStatus("Testing prod")).toBe("Testing prod");
+    expect(toSheetStatus("Waiting To Live")).toBe("Waiting To Live");
   });
 
-  it("rewrites 'Wait To Review' (Notion) to 'Wait to Review' (Sheet)", () => {
-    expect(toSheetStatus("Wait To Review")).toBe("Wait to Review");
-    expect(toSheetStatus("wait to review")).toBe("Wait to Review");
-  });
-
-  it("rewrites 'Wait To Live' (Notion) to 'Live' (Sheet)", () => {
-    expect(toSheetStatus("Wait To Live")).toBe("Live");
-    expect(toSheetStatus("wait to live")).toBe("Live");
+  it("rewrites 'Waiting To Review' (Notion) to 'Waiting to Review' (Sheet)", () => {
+    expect(toSheetStatus("Waiting To Review")).toBe("Waiting to Review");
+    expect(toSheetStatus("waiting to review")).toBe("Waiting to Review");
   });
 
   it("returns the raw Notion value for unmapped statuses", () => {

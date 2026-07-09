@@ -221,18 +221,18 @@ export const MONTH_HEADER_PATTERN = /^(\d{1,2})\/(\d{4})$/;
 // Canonical Notion Status → canonical Sheet dropdown value.
 // Key = exactly what Notion reports (from DB schema).
 // Value = exactly what the target Sheet's Status column dropdown accepts.
-// Notion and Sheet disagree on casing for a couple of entries, and
-// "Wait To Live" in Notion is shown as "Live" in the Sheet, so an explicit
-// map keeps both sides honest.
+// Only "test-onward" statuses sync: a task appears once it reaches Waiting To
+// Test. Earlier stages (To do, Doing, Feedback, …) and QA/UAT are intentionally
+// excluded. Notion and the Sheet disagree on casing for "Waiting To Review"
+// (the Sheet dropdown spells it "Waiting to Review").
 const NOTION_TO_SHEET_STATUS = {
-  Done: "Done",
-  "Testing Pro": "Testing Pro",
-  Testing: "Testing",
   "Waiting To Test": "Waiting To Test",
-  "Wait To Review": "Wait to Review",
+  Testing: "Testing",
+  "Waiting To Review": "Waiting to Review",
   Reviewing: "Reviewing",
-  "Wait To Live": "Live",
-  "Review Done": "Review Done",
+  "Waiting To Live": "Waiting To Live",
+  "Testing prod": "Testing prod",
+  Done: "Done",
 } as const;
 
 export const SYNCABLE_STATUSES = Object.keys(NOTION_TO_SHEET_STATUS);
