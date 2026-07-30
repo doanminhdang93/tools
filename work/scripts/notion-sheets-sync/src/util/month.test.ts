@@ -6,7 +6,15 @@ import {
   monthLabelFromIsoString,
   monthLabelToDate,
   previousMonthLabel,
+  vietnamIsoString,
 } from "./month.ts";
+
+describe("vietnamIsoString", () => {
+  it("renders the instant as Vietnam wall-clock time with a +07:00 offset", () => {
+    expect(vietnamIsoString(new Date("2026-07-30T02:54:00Z"))).toBe("2026-07-30T09:54:00+07:00");
+    expect(vietnamIsoString(new Date("2026-07-30T17:30:00Z"))).toBe("2026-07-31T00:30:00+07:00");
+  });
+});
 
 describe("currentMonthLabel", () => {
   it("formats a clear mid-month date in Vietnam time as M/YYYY", () => {

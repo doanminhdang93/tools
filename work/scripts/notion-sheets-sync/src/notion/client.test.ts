@@ -46,6 +46,14 @@ describe("filterByAssignee", () => {
     const pages = [pageWith({ id: "a", assignees: ["Bob"] })];
     expect(filterByAssignee(pages, "Alice")).toEqual([]);
   });
+
+  it("matches on the renamed 'Person' property", () => {
+    const pages: NotionPage[] = [
+      { id: "a", properties: { Person: { type: "people", people: [{ name: "Alice" }] } } },
+      { id: "b", properties: { Person: { type: "people", people: [{ name: "Bob" }] } } },
+    ];
+    expect(filterByAssignee(pages, "Alice").map((page) => page.id)).toEqual(["a"]);
+  });
 });
 
 describe("collectAssigneeNames", () => {

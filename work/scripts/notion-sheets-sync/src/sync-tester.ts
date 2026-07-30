@@ -46,6 +46,7 @@ export interface SyncTesterResult {
   monthLabel: string;
   totalPoints: number;
   taskCount: number;
+  syncedPageIds: string[];
 }
 
 interface TaskEntry {
@@ -175,7 +176,10 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     (sum, task) => sum + (Number((task.point ?? "").replace(/,/g, "")) || 0),
     0,
   );
-  return { tabName: testerTab, monthLabel, totalPoints, taskCount: tasks.length };
+  const syncedPageIds = tasks
+    .map((task) => extractPageIdFromUrl(task.notionUrl))
+    .filter((pageId): pageId is string => pageId !== null);
+  return { tabName: testerTab, monthLabel, totalPoints, taskCount: tasks.length, syncedPageIds };
 }
 
 async function collectPreservedTesterSectionRows(

@@ -1,18 +1,14 @@
 export const POINT_VALUE_VND = 45_000;
 
+// PO / Designer / Marketer are paid a flat lower rate per point.
+export const LOW_RATE_POINT_VALUE_VND = 23_000;
+
 export const TESTER_POINT_RATIO = 0.3;
 
 export const REVIEW_ELIGIBLE_ROLES = new Set(["developer", "sublead"]);
 
 export const PO_LAYOUT_TASK_TYPE_PO = "PO task";
 export const PO_LAYOUT_TASK_TYPE_TESTER = "Tester task";
-
-const PO_TIER_1_MAX_POINT = 136;
-const PO_TIER_2_MAX_POINT = 188;
-const PO_TIER_1_RATE = 22_000;
-const PO_TIER_2_RATE = 30_000;
-const PO_TIER_3_RATE = 35_000;
-const PO_TIER_2_CHUNK = PO_TIER_2_MAX_POINT - PO_TIER_1_MAX_POINT;
 
 export function parseRoles(roleField: string): string[] {
   return roleField
@@ -26,42 +22,11 @@ export function rolesIncludePo(roleField: string): boolean {
 }
 
 const LOW_RATE_ROLES = new Set(["po", "designer", "marketer"]);
-const TIERED_ROLES = new Set(["po", "designer", "marketer"]);
 
 export function pointRateForRole(role: string): number {
   const normalizedRole = role.trim().toLowerCase();
-  if (LOW_RATE_ROLES.has(normalizedRole)) return 22_000;
-  return 45_000;
-}
-
-export function isTieredRole(role: string): boolean {
-  return TIERED_ROLES.has(role.trim().toLowerCase());
-}
-
-export function tieredMoneyForPoints(points: number): number {
-  if (points < PO_TIER_1_MAX_POINT) return points * PO_TIER_1_RATE;
-  if (points < PO_TIER_2_MAX_POINT) {
-    return PO_TIER_1_MAX_POINT * PO_TIER_1_RATE + (points - PO_TIER_1_MAX_POINT) * PO_TIER_2_RATE;
-  }
-  return (
-    PO_TIER_1_MAX_POINT * PO_TIER_1_RATE
-    + PO_TIER_2_CHUNK * PO_TIER_2_RATE
-    + (points - PO_TIER_2_MAX_POINT) * PO_TIER_3_RATE
-  );
-}
-
-function tieredPointSheetFormula(pointExpression: string): string {
-  const tier1Cap = `${PO_TIER_1_MAX_POINT}*${PO_TIER_1_RATE}`;
-  const tier2Chunk = `${PO_TIER_2_CHUNK}*${PO_TIER_2_RATE}`;
-  return (
-    `IF(${pointExpression}<${PO_TIER_1_MAX_POINT},`
-      + `${pointExpression}*${PO_TIER_1_RATE},`
-      + `IF(${pointExpression}<${PO_TIER_2_MAX_POINT},`
-        + `${tier1Cap}+(${pointExpression}-${PO_TIER_1_MAX_POINT})*${PO_TIER_2_RATE},`
-        + `${tier1Cap}+${tier2Chunk}+(${pointExpression}-${PO_TIER_2_MAX_POINT})*${PO_TIER_3_RATE}`
-      + `)`
-    + `)`
-  );
+  if (LOW_RATE_ROLES.has(normalizedRole)) return LOW_RATE_POINT_VALUE_VND;
+  return POINT_VALUE_VND;
 }
 
 export interface TesterTaskRange {
@@ -86,10 +51,6 @@ export function moneyFormulaForRole(
   if (normalizedRole === "sublead") {
     const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
     return `=(${pointCol}${headerRowOneBased}+${reviewCol}${headerRowOneBased})*${pointRate}`;
-  }
-  if (normalizedRole === "designer" || normalizedRole === "marketer") {
-    const pointCell = `${pointCol}${headerRowOneBased}`;
-    return `=${tieredPointSheetFormula(pointCell)}`;
   }
   return `=${pointCol}${headerRowOneBased}*${pointRate}`;
 }
@@ -187,7 +148,7 @@ export function poLayoutMoneyFormula(
 
   const poSum = `SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_PO}",${baRange})`;
   const testerSum = `SUMIF(${taskTypeRange},"${PO_LAYOUT_TASK_TYPE_TESTER}",${testRange})`;
-  const poPart = tieredPointSheetFormula(poSum);
+  const poPart = `${poSum}*${LOW_RATE_POINT_VALUE_VND}`;
   const testerPart = `${testerSum}*${TESTER_POINT_RATIO}*${POINT_VALUE_VND}`;
   return `=${poPart}+${testerPart}`;
 }

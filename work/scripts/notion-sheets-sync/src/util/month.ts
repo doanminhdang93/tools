@@ -37,6 +37,12 @@ export function kpiCycleStart(monthLabel: string): Date {
   return new Date(Date.UTC(prevYear, prevMonth - 1, 10) - VIETNAM_OFFSET_MILLISECONDS);
 }
 
+// Notion renders a date property in the offset it was written with, so stamp
+// Vietnam wall-clock time instead of UTC.
+export function vietnamIsoString(date: Date): string {
+  return `${toVietnamTime(date).toISOString().slice(0, 19)}+07:00`;
+}
+
 export function currentMonthLabel(now: Date = new Date()): string {
   const vietnamNow = toVietnamTime(now);
   return formatMonthLabel(vietnamNow.getUTCMonth() + 1, vietnamNow.getUTCFullYear());

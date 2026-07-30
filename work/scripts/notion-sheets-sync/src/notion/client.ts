@@ -1,6 +1,7 @@
 import { Client } from "@notionhq/client";
 import nodeFetch from "node-fetch";
 import { withRetry } from "../util/retry.ts";
+import { assigneeNamesOf } from "./fields.ts";
 
 const fetchOverride = nodeFetch as unknown as (typeof globalThis)["fetch"];
 
@@ -14,7 +15,6 @@ export interface NotionPage {
 }
 
 const NOTION_PAGE_SIZE = 100;
-const ASSIGNEE_FIELD = "Assignee";
 
 export interface FetchPagesOptions {
   createdOnOrAfter?: Date;
@@ -82,27 +82,15 @@ export function filterByAssignee(
   pages: NotionPage[],
   personName: string,
 ): NotionPage[] {
-  return pages.filter((page) => assigneeNamesOnPage(page).includes(personName));
+  return pages.filter((page) => assigneeNamesOf(page).includes(personName));
 }
 
 export function collectAssigneeNames(pages: NotionPage[]): Set<string> {
   const names = new Set<string>();
   for (const page of pages) {
-    for (const name of assigneeNamesOnPage(page)) {
+    for (const name of assigneeNamesOf(page)) {
       names.add(name);
     }
   }
   return names;
-}
-
-function assigneeNamesOnPage(page: NotionPage): string[] {
-  const property = page.properties[ASSIGNEE_FIELD];
-  if (!property || property.type !== "people") return [];
-
-  const people = (property as { people?: { name?: string | null }[] }).people;
-  if (!Array.isArray(people)) return [];
-
-  return people
-    .map((person) => person.name ?? "")
-    .filter((name) => name.length > 0);
 }

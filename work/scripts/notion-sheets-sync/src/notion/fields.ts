@@ -68,8 +68,24 @@ export function createdTimeOf(page: NotionPage): string {
   return (createdProperty as { created_time?: string }).created_time ?? "";
 }
 
+// The Tasks DB renamed its people property "Assignee" → "Person". Read the new
+// name first and keep the old one as a fallback so a rollback (or an older DB
+// copy) does not silently sync empty tabs.
+const ASSIGNEE_PROPERTY_NAMES = ["Person", "Assignee"] as const;
+
 export function assigneeNamesOf(page: NotionPage): string[] {
-  return peopleNamesFromProperty(page.properties["Assignee"]);
+  for (const propertyName of ASSIGNEE_PROPERTY_NAMES) {
+    const names = peopleNamesFromProperty(page.properties[propertyName]);
+    if (names.length > 0) return names;
+  }
+  return [];
+}
+
+export function doneDateOf(page: NotionPage): string {
+  const doneDateProperty = page.properties["Done date"];
+  if (!doneDateProperty || doneDateProperty.type !== "date") return "";
+  const dateValue = (doneDateProperty as { date?: { start?: string } | null }).date;
+  return dateValue?.start ?? "";
 }
 
 export function followerNamesOf(page: NotionPage): string[] {

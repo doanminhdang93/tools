@@ -6,8 +6,6 @@ import { pushPointToNotion } from "./notion/update.ts";
 import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheets/parser.ts";
 import {
   pointRateForRole,
-  isTieredRole,
-  tieredMoneyForPoints,
   moneyFormulaForRole,
   SHEET_COLUMN_COUNT,
   COLUMN_INDEX,
@@ -76,6 +74,7 @@ export interface SyncTabResult {
   totalMoney: number;
   taskCount: number;
   sectionCreated: boolean;
+  syncedPageIds: string[];
 }
 
 export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
@@ -219,11 +218,7 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
         (sum, row) => sum + (parseFloat(row[COLUMN_INDEX.point]) || 0),
         0,
       );
-  const totalMoney = isPoLayout
-    ? 0
-    : isTieredRole(role)
-      ? tieredMoneyForPoints(totalPoints)
-      : totalPoints * pointRate;
+  const totalMoney = isPoLayout ? 0 : totalPoints * pointRate;
   const headerRow = isPoLayout
     ? buildPoMonthHeaderRow(targetMonthLabel, writeStartRow, allTaskRows.length)
     : buildMonthHeaderRow(
@@ -290,7 +285,21 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     totalMoney,
     taskCount: allTaskRows.length,
     sectionCreated: !existingSection,
+    syncedPageIds: collectPageIdsFromRows(
+      allTaskRows,
+      isPoLayout ? PO_LAYOUT_COLUMN_INDEX.link : COLUMN_INDEX.link,
+    ),
   };
+}
+
+function collectPageIdsFromRows(rows: string[][], linkColumnIndex: number): string[] {
+  const pageIds: string[] = [];
+  for (const row of rows) {
+    const pageId = extractPageIdFromUrl(row[linkColumnIndex] ?? "");
+    if (!pageId) continue;
+    pageIds.push(pageId);
+  }
+  return pageIds;
 }
 
 function pagesInCandidateWindow(

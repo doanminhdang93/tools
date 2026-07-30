@@ -57,9 +57,26 @@ Task rows hold these columns:
 | K | Followers | `Follower` (people, comma-separated) | yes |
 | L | Note | — | **preserved** (user-managed) |
 
-The section header row is recomputed every run via formulas: `Point = SUM(H<firstTask>:H<lastTask>)`, `Money = Point × 45000`. Row 1 headers are also written by the tool on every run (idempotent), so spreading the tool to a new tab requires no manual header setup.
+The section header row is recomputed every run via formulas: `Point = SUM(H<firstTask>:H<lastTask>)` and a per-role `Money` formula. Row 1 headers are also written by the tool on every run (idempotent), so spreading the tool to a new tab requires no manual header setup.
+
+**Money rate per role** (`pointRateForRole` / `moneyFormulaForRole` in [src/constants.ts](src/constants.ts)):
+
+| Role | Money formula |
+| --- | --- |
+| Developer | `Point × 45,000` |
+| Sublead | `(Point + Review point) × 45,000` |
+| Tester | sole-tester points × 45,000 + co-assigned points × 0.3 × 45,000 |
+| PO / Designer / Marketer | `Point × 23,000` |
+| PO + Tester (PO layout) | `BA Point × 23,000 + Test point × 0.3 × 45,000` |
 
 Upsert matches by the 32-character Notion page id embedded in the `link` URL of column C — rows keep their position; user-owned columns (E, F, L) are kept verbatim.
+
+## What gets written back to Notion
+
+- **Point** — when the sheet's Point cell differs from Notion for a task, the sheet wins and the value is pushed to `Size Card` / `Story Point`.
+- **Done date** — every task written to the sheet in a run gets `Done date` set to the moment that sync was triggered (Vietnam time), but **only when the field is still empty**, so the first stamp is never overwritten by later syncs.
+
+The people property is read as `Person` (the DB's current name), falling back to the legacy `Assignee` name.
 
 ## Setup
 
@@ -255,7 +272,9 @@ work/scripts/notion-sheets-sync/
 │   ├── constants.ts (+.test)   # Columns, POINT_VALUE_VND, Notion→Sheet status map
 │   ├── notion/
 │   │   ├── client.ts           # DB query + assignee filter
-│   │   ├── fields.ts           # Typed accessors (title/status/tag/size-card/created)
+│   │   ├── fields.ts           # Typed accessors (title/status/tag/size-card/created/done-date)
+│   │   ├── update.ts           # Write back to Notion (Size Card / Story Point / Done date)
+│   │   ├── done-date.ts        # Stamp Done date on synced tasks that don't have one yet
 │   │   └── url.ts (+.test)     # Build + parse Notion URLs; page-id extraction
 │   ├── sheets/
 │   │   ├── client.ts (+.test)  # Sheets API (read / writeRange / clearRows / style)

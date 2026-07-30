@@ -2,6 +2,8 @@ import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { fetchAllPages, createNotionClient } from "./notion/client.ts";
+import { stampDoneDates } from "./notion/done-date.ts";
+import { normalizeNotionPageId } from "./notion/url.ts";
 import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
 import { syncTab, type SyncTabResult } from "./sync.ts";
@@ -139,6 +141,7 @@ function targetSortOrder(role: string): number {
 
 
 async function main(): Promise<void> {
+  const syncTriggeredAt = new Date();
   const appConfig = loadConfig();
   const logger = createLogger({
     slackBotToken: appConfig.slackBotToken,
@@ -180,6 +183,7 @@ async function main(): Promise<void> {
 
   const failures: string[] = [];
   const successes: SyncedSummary[] = [];
+  const syncedPageIds = new Set<string>();
   const SLEEP_BETWEEN_TABS_MS = 15000;
 
   let tabHeaderRowMap: Map<string, number> | undefined;
@@ -233,6 +237,7 @@ async function main(): Promise<void> {
         taskCount: result.taskCount,
         totalPoints: result.totalPoints,
       });
+      for (const pageId of result.syncedPageIds) syncedPageIds.add(pageId);
     } catch (cause) {
       const message = `Tab "${member.tabName}" failed: ${(cause as Error).message}`;
       logger.error(message, cause);
@@ -244,6 +249,13 @@ async function main(): Promise<void> {
       await new Promise((resolveAfter) => setTimeout(resolveAfter, SLEEP_BETWEEN_TABS_MS));
     }
   }
+
+  await stampDoneDates({
+    client: notionClient,
+    pages: allPages.filter((page) => syncedPageIds.has(normalizeNotionPageId(page.id))),
+    doneAt: syncTriggeredAt,
+    logger,
+  });
 
   const successSummary = buildSyncSummary(monthLabel, successes, failures);
   logger.info(successSummary);
