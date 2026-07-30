@@ -4,15 +4,25 @@ import {
   firstInstantOfMonth,
   lastInstantOfMonth,
   monthLabelFromIsoString,
+  lastDayOfMonth,
   monthLabelToDate,
   previousMonthLabel,
-  vietnamIsoString,
 } from "./month.ts";
 
-describe("vietnamIsoString", () => {
-  it("renders the instant as Vietnam wall-clock time with a +07:00 offset", () => {
-    expect(vietnamIsoString(new Date("2026-07-30T02:54:00Z"))).toBe("2026-07-30T09:54:00+07:00");
-    expect(vietnamIsoString(new Date("2026-07-30T17:30:00Z"))).toBe("2026-07-31T00:30:00+07:00");
+describe("lastDayOfMonth", () => {
+  it("returns the last calendar day of the label's month", () => {
+    expect(lastDayOfMonth("7/2026")).toBe("2026-07-31");
+    expect(lastDayOfMonth("4/2026")).toBe("2026-04-30");
+    expect(lastDayOfMonth("12/2026")).toBe("2026-12-31");
+  });
+
+  it("handles February in common and leap years", () => {
+    expect(lastDayOfMonth("2/2026")).toBe("2026-02-28");
+    expect(lastDayOfMonth("2/2028")).toBe("2028-02-29");
+  });
+
+  it("rejects a malformed label", () => {
+    expect(() => lastDayOfMonth("2026-07")).toThrow();
   });
 });
 

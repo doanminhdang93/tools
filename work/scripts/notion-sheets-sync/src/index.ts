@@ -2,7 +2,7 @@ import { config as loadDotenv } from "dotenv";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
 import { fetchAllPages, createNotionClient } from "./notion/client.ts";
-import { stampDoneDates } from "./notion/done-date.ts";
+import { stampDoneDates, type DoneDateTarget } from "./notion/done-date.ts";
 import { normalizeNotionPageId } from "./notion/url.ts";
 import { createSheetsClient } from "./sheets/client.ts";
 import { createLogger, type Logger } from "./logger.ts";
@@ -141,7 +141,6 @@ function targetSortOrder(role: string): number {
 
 
 async function main(): Promise<void> {
-  const syncTriggeredAt = new Date();
   const appConfig = loadConfig();
   const logger = createLogger({
     slackBotToken: appConfig.slackBotToken,
@@ -183,7 +182,9 @@ async function main(): Promise<void> {
 
   const failures: string[] = [];
   const successes: SyncedSummary[] = [];
-  const syncedPageIds = new Set<string>();
+  // Tabs can resolve different month sections in the same run, so remember which
+  // section each task landed in — that month's last day becomes its Done date.
+  const monthLabelByPageId = new Map<string, string>();
   const SLEEP_BETWEEN_TABS_MS = 15000;
 
   let tabHeaderRowMap: Map<string, number> | undefined;
@@ -237,7 +238,10 @@ async function main(): Promise<void> {
         taskCount: result.taskCount,
         totalPoints: result.totalPoints,
       });
-      for (const pageId of result.syncedPageIds) syncedPageIds.add(pageId);
+      for (const pageId of result.syncedPageIds) {
+        if (monthLabelByPageId.has(pageId)) continue;
+        monthLabelByPageId.set(pageId, result.monthLabel);
+      }
     } catch (cause) {
       const message = `Tab "${member.tabName}" failed: ${(cause as Error).message}`;
       logger.error(message, cause);
@@ -250,12 +254,13 @@ async function main(): Promise<void> {
     }
   }
 
-  await stampDoneDates({
-    client: notionClient,
-    pages: allPages.filter((page) => syncedPageIds.has(normalizeNotionPageId(page.id))),
-    doneAt: syncTriggeredAt,
-    logger,
-  });
+  const doneDateTargets: DoneDateTarget[] = [];
+  for (const page of allPages) {
+    const sectionMonthLabel = monthLabelByPageId.get(normalizeNotionPageId(page.id));
+    if (!sectionMonthLabel) continue;
+    doneDateTargets.push({ page, monthLabel: sectionMonthLabel });
+  }
+  await stampDoneDates({ client: notionClient, targets: doneDateTargets, logger });
 
   const successSummary = buildSyncSummary(monthLabel, successes, failures);
   logger.info(successSummary);

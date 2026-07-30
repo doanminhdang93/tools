@@ -2,7 +2,6 @@ import type { Client as NotionClient } from "@notionhq/client";
 import type { NotionPage } from "./client.ts";
 import type { PointSource } from "./fields.ts";
 import { withRetry } from "../util/retry.ts";
-import { vietnamIsoString } from "../util/month.ts";
 
 export interface PushPointArgs {
   client: NotionClient;
@@ -19,7 +18,7 @@ export interface NotionUpdateResult {
 export interface PushDoneDateArgs {
   client: NotionClient;
   page: NotionPage;
-  doneAt: Date;
+  doneDate: string;
 }
 
 const DONE_DATE_FIELD = "Done date";
@@ -30,7 +29,7 @@ export async function pushDoneDateToNotion(args: PushDoneDateArgs): Promise<Noti
       () => args.client.pages.update({
         page_id: args.page.id,
         properties: {
-          [DONE_DATE_FIELD]: { date: { start: vietnamIsoString(args.doneAt) } },
+          [DONE_DATE_FIELD]: { date: { start: args.doneDate } },
         } as Parameters<NotionClient["pages"]["update"]>[0]["properties"],
       }),
       { label: `notion.pages.update ${DONE_DATE_FIELD}` },
