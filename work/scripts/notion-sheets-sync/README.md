@@ -74,7 +74,14 @@ Upsert matches by the 32-character Notion page id embedded in the `link` URL of 
 ## What gets written back to Notion
 
 - **Point** — when the sheet's Point cell differs from Notion for a task, the sheet wins and the value is pushed to `Size Card` / `Story Point`.
-- **Done date** — every task written to the sheet in a run gets `Done date` set to the **last day of the month section it landed in** (syncing `7/2026` → `2026-07-31`, date only, no time), but **only when the field is still empty**, so an existing date is never moved. Tabs that resolve to different months in the same run each stamp their own month-end.
+- **Done date** — every task written to the sheet in a run gets `Done date` set to the **last day of the month section it landed in** (syncing `7/2026` → `2026-07-31`, date only, no time). Written when the field is empty **or when the existing date falls in a different month**; a date already inside the right month is left untouched, so a normal run doesn't churn `Last edited time` across the database. Tabs that resolve to different months in the same run each stamp their own month-end.
+
+  To re-map a whole month after the fact (e.g. tasks moved between sections), use the repair command — it forces every task to its section's month-end, reads the Sheet and writes only Notion:
+
+  ```bash
+  npx tsx commands/fix-done-dates.ts --months 6/2026,7/2026            # dry run
+  npx tsx commands/fix-done-dates.ts --months 6/2026,7/2026 --apply    # writes + backup JSON
+  ```
 
 The people property is read as `Person` (the DB's current name), falling back to the legacy `Assignee` name.
 
