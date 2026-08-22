@@ -146,6 +146,12 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
       )
     : null;
 
+  if (isSublead && !subleadHeaderFormula) {
+    logger.info(
+      `[${tabName}] no Dev tab review total found for ${targetMonthLabel} — Review point set to 0`,
+    );
+  }
+
   const preservedRows = collectPreservedExistingRows(
     existingSection,
     candidatePages,
@@ -544,8 +550,12 @@ function buildMonthHeaderRow(
     lastTaskRow,
   });
   if (isReviewEligible) {
-    if (subleadHeaderFormula) {
-      row[COLUMN_INDEX.reviewPoint] = subleadHeaderFormula;
+    // A Sublead's review points come from the Dev tabs he reviews. When that
+    // cross-tab formula can't be built (a Dev tab has no section for this month
+    // yet), leave 0 — summing this tab's own rows would silently credit him
+    // 20% of his own points.
+    if (role.trim().toLowerCase() === SUBLEAD_ROLE) {
+      row[COLUMN_INDEX.reviewPoint] = subleadHeaderFormula ?? "0";
     } else {
       const reviewCol = columnLetter(COLUMN_INDEX.reviewPoint);
       row[COLUMN_INDEX.reviewPoint] = `=SUM(${reviewCol}${firstTaskRow}:${reviewCol}${lastTaskRow})`;
