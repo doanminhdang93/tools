@@ -2,7 +2,7 @@ import type { Client as NotionClient } from "@notionhq/client";
 import type { SheetsClient } from "./sheets/client.ts";
 import type { NotionPage } from "./notion/client.ts";
 import { filterByAssignee } from "./notion/client.ts";
-import { pushPointToNotion } from "./notion/update.ts";
+import { pushPointIntents, type PointPushIntent } from "./notion/update.ts";
 import { parseTab, findSection, type ParsedTab, type MonthSection } from "./sheets/parser.ts";
 import {
   pointRateForRole,
@@ -165,17 +165,31 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   }
 
   const existingRowByPageId = indexTaskRowsByPageId(existingSection);
-  const sheetPointByPageId = collectSheetPointsByPageId(existingSection);
+  const sheetPointByPageId = isPoLayout
+    ? new Map<string, number>()
+    : collectSheetPointsByPageId(existingSection);
+  const poSheetPointsByPageId = isPoLayout
+    ? collectPoSheetPointsByPageId(existingSection)
+    : new Map<string, PoLayoutPoints>();
 
-  const pushIntents: { page: NotionPage; point: number }[] = [];
+  const pushIntents: PointPushIntent[] = [];
   const finalPointByPageId = new Map<string, number>();
+  const finalPoPointsByPageId = new Map<string, PoLayoutPoints>();
   for (const page of candidatePages) {
     const normalizedId = normalizeNotionPageId(page.id);
+
+    if (isPoLayout) {
+      const resolvedPoints = resolvePoLayoutPoints(page, poSheetPointsByPageId.get(normalizedId));
+      finalPoPointsByPageId.set(normalizedId, resolvedPoints);
+      pushIntents.push(...poLayoutPushIntents(page, resolvedPoints));
+      continue;
+    }
+
     const sheetPoint = sheetPointByPageId.get(normalizedId) ?? 0;
     const notionPoint = pointNumberOf(page, pointSource);
     if (sheetPoint > 0 && sheetPoint !== notionPoint) {
       finalPointByPageId.set(normalizedId, sheetPoint);
-      pushIntents.push({ page, point: sheetPoint });
+      pushIntents.push({ page, point: sheetPoint, field: pickPushTargetField(page, pointSource) });
     } else {
       finalPointByPageId.set(normalizedId, notionPoint);
     }
@@ -184,7 +198,11 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
   const newTaskRows = candidatePages.map((page) => {
     const normalizedId = normalizeNotionPageId(page.id);
     if (isPoLayout) {
-      return buildPoTaskRow(page, existingRowByPageId.get(normalizedId));
+      return buildPoTaskRow(
+        page,
+        existingRowByPageId.get(normalizedId),
+        finalPoPointsByPageId.get(normalizedId),
+      );
     }
     return buildTaskRow(
       page,
@@ -259,25 +277,8 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     monthLabel: targetMonthLabel,
   });
 
-  if (notionClient && pushIntents.length > 0) {
-    logger.info(`[${tabName}] pushing ${pushIntents.length} sheet-overridden points back to Notion`);
-    for (const intent of pushIntents) {
-      const targetField = pickPushTargetField(intent.page, pointSource);
-      const result = await pushPointToNotion({
-        client: notionClient,
-        page: intent.page,
-        point: intent.point,
-        source: targetField,
-      });
-      const fieldLabel = targetField === "story_point" ? "Story Point" : "Size Card";
-      const shortId = intent.page.id.slice(0, 8);
-      if (result.ok) {
-        applyPushedPointToPage(intent.page, targetField, intent.point);
-        logger.info(`[${tabName}]   ✔ ${shortId} → ${fieldLabel}=${intent.point}`);
-      } else {
-        logger.warn(`[${tabName}]   ✗ ${shortId} ${fieldLabel}=${intent.point} failed: ${result.reason}`);
-      }
-    }
+  if (notionClient) {
+    await pushPointIntents({ client: notionClient, intents: pushIntents, tabName, logger });
   }
 
   logger.info(
@@ -395,7 +396,11 @@ function indexTaskRowsByPageId(section: MonthSection | undefined): Map<string, s
   return indexed;
 }
 
-function buildPoTaskRow(page: NotionPage, existingRow: string[] | undefined): string[] {
+function buildPoTaskRow(
+  page: NotionPage,
+  existingRow: string[] | undefined,
+  resolvedPoints: PoLayoutPoints | undefined,
+): string[] {
   const row = new Array<string>(PO_LAYOUT_COLUMN_COUNT).fill("");
   row[PO_LAYOUT_COLUMN_INDEX.month] = "";
   row[PO_LAYOUT_COLUMN_INDEX.title] = titleOf(page);
@@ -403,8 +408,9 @@ function buildPoTaskRow(page: NotionPage, existingRow: string[] | undefined): st
   row[PO_LAYOUT_COLUMN_INDEX.app] = tagNamesOf(page).map(toSheetApp).join(", ");
   row[PO_LAYOUT_COLUMN_INDEX.status] = toSheetStatus(statusOf(page));
 
-  const storyPoint = storyPointNumberOf(page);
-  const sizeCard = sizeCardNumberOf(page);
+  const points = resolvedPoints ?? resolvePoLayoutPoints(page, undefined);
+  const storyPoint = points.baPoint;
+  const sizeCard = points.testPoint;
   if (storyPoint > 0) {
     row[PO_LAYOUT_COLUMN_INDEX.taskType] = PO_LAYOUT_TASK_TYPE_PO;
     row[PO_LAYOUT_COLUMN_INDEX.baPoint] = String(storyPoint);
@@ -498,20 +504,55 @@ function collectSheetPointsByPageId(section: MonthSection | undefined): Map<stri
   return indexed;
 }
 
-function applyPushedPointToPage(page: NotionPage, field: PointSource, newPoint: number): void {
-  const propertyName = field === "story_point" ? "Story Point" : "Size Card";
-  const existing = page.properties[propertyName];
-  if (existing?.type === "number") {
-    page.properties[propertyName] = {
-      type: "number",
-      number: newPoint,
-    } as NotionPage["properties"][string];
-    return;
+interface PoLayoutPoints {
+  baPoint: number;
+  testPoint: number;
+}
+
+function collectPoSheetPointsByPageId(section: MonthSection | undefined): Map<string, PoLayoutPoints> {
+  const indexed = new Map<string, PoLayoutPoints>();
+  if (!section) return indexed;
+
+  for (const taskRow of section.taskRows) {
+    const pageId = extractPageIdFromUrl(taskRow[PO_LAYOUT_COLUMN_INDEX.link] ?? "");
+    if (!pageId) continue;
+    indexed.set(pageId, {
+      baPoint: parseSheetPoint(taskRow[PO_LAYOUT_COLUMN_INDEX.baPoint]),
+      testPoint: parseSheetPoint(taskRow[PO_LAYOUT_COLUMN_INDEX.testPoint]),
+    });
   }
-  page.properties[propertyName] = {
-    type: "select",
-    select: { name: String(newPoint) },
-  } as NotionPage["properties"][string];
+  return indexed;
+}
+
+function parseSheetPoint(rawCell: string | undefined): number {
+  const numericPoint = parseFloat((rawCell ?? "").toString().replace(/,/g, "").trim());
+  if (!Number.isFinite(numericPoint) || numericPoint <= 0) return 0;
+  return numericPoint;
+}
+
+function resolvePoLayoutPoints(
+  page: NotionPage,
+  sheetPoints: PoLayoutPoints | undefined,
+): PoLayoutPoints {
+  return {
+    baPoint: sheetPoints?.baPoint || storyPointNumberOf(page),
+    testPoint: sheetPoints?.testPoint || sizeCardNumberOf(page),
+  };
+}
+
+// A PO-layout row is exclusive: BA points belong to a "PO task", Test points to
+// a "Tester task". Only the column the row will actually keep gets pushed, so a
+// stale value in the other column can't leak into Notion.
+function poLayoutPushIntents(page: NotionPage, resolved: PoLayoutPoints): PointPushIntent[] {
+  if (resolved.baPoint > 0) {
+    if (resolved.baPoint === storyPointNumberOf(page)) return [];
+    return [{ page, point: resolved.baPoint, field: "story_point" }];
+  }
+  if (resolved.testPoint > 0) {
+    if (resolved.testPoint === sizeCardNumberOf(page)) return [];
+    return [{ page, point: resolved.testPoint, field: "size_card" }];
+  }
+  return [];
 }
 
 function pickPushTargetField(page: NotionPage, pointSource: PointSource): PointSource {

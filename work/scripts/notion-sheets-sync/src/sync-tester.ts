@@ -1,6 +1,8 @@
+import type { Client as NotionClient } from "@notionhq/client";
 import type { SheetsClient } from "./sheets/client.ts";
 import type { NotionPage } from "./notion/client.ts";
 import { filterByAssignee } from "./notion/client.ts";
+import { pushPointIntents, type PointPushIntent } from "./notion/update.ts";
 import type { Logger } from "./logger.ts";
 import type { Member } from "./util/members.ts";
 import {
@@ -39,6 +41,7 @@ export interface SyncTesterArgs {
   allPages: NotionPage[];
   sheets: SheetsClient;
   logger: Logger;
+  notionClient?: NotionClient;
 }
 
 export interface SyncTesterResult {
@@ -61,7 +64,7 @@ interface TaskEntry {
 }
 
 export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterResult> {
-  const { testerTab, testerNotionName, testerRole, monthLabel, members, allPages, sheets, logger } = args;
+  const { testerTab, testerNotionName, testerRole, monthLabel, members, allPages, sheets, logger, notionClient } = args;
   logger.info(`[${testerTab}] tester sync — month=${monthLabel}, notion="${testerNotionName}"`);
 
   const coassigneeMembers = members.filter((member) =>
@@ -78,6 +81,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
 
   const ownTabRows = await readMigratedTabValues(sheets, testerTab, logger);
   const pageIdsInOtherSectionsOfOwnTab = collectPageIdsOutsideTargetSection(ownTabRows, monthLabel);
+  const ownSheetPointByPageId = collectSheetPointsByPageId(ownTabRows, monthLabel);
 
   const tasksByUrl = new Map<string, TaskEntry>();
 
@@ -117,6 +121,7 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
   logger.info(`[${testerTab}] from coassignee tabs: ${tasksByUrl.size} task(s)`);
 
   const myPages = filterByAssignee(allPages, testerNotionName);
+  const pushIntents: PointPushIntent[] = [];
   let soloAdded = 0;
   for (const page of myPages) {
     if (!isSyncableStatus(statusOf(page))) continue;
@@ -129,15 +134,26 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     const createdAt = new Date(createdIso);
     if (createdAt < windowStart || createdAt > windowEnd) continue;
 
+    const normalizedPageId = normalizeNotionPageId(page.id);
     const url = `https://www.notion.so/${page.id.replace(/-/g, "")}`;
     if (tasksByUrl.has(url)) continue;
-    if (pageIdsInOtherSectionsOfOwnTab.has(normalizeNotionPageId(page.id))) continue;
+    if (pageIdsInOtherSectionsOfOwnTab.has(normalizedPageId)) continue;
+
+    // Sole-tester rows are this tab's own to edit, so the sheet is authoritative:
+    // a hand-typed point wins over Notion and is pushed back to Size Card.
+    const notionPoint = sizeCardNumberOf(page);
+    const sheetPoint = ownSheetPointByPageId.get(normalizedPageId) ?? 0;
+    const finalPoint = sheetPoint > 0 ? sheetPoint : notionPoint;
+    if (finalPoint !== notionPoint) {
+      pushIntents.push({ page, point: finalPoint, field: "size_card" });
+    }
+
     tasksByUrl.set(url, {
       title: titleOf(page),
       notionUrl: url,
       app: tagNamesOf(page).map(toSheetApp).join(", "),
       status: toSheetStatus(statusOf(page)),
-      point: String(sizeCardNumberOf(page)),
+      point: String(finalPoint),
       assignees: assigneeNamesOf(page).join(", "),
       followers: followerNamesOf(page).join(", "),
       source: "(Notion sole)",
@@ -171,6 +187,10 @@ export async function syncTesterTab(args: SyncTesterArgs): Promise<SyncTesterRes
     tabName: testerTab,
     monthLabel,
   });
+
+  if (notionClient) {
+    await pushPointIntents({ client: notionClient, intents: pushIntents, tabName: testerTab, logger });
+  }
 
   const totalPoints = tasks.reduce(
     (sum, task) => sum + (Number((task.point ?? "").replace(/,/g, "")) || 0),
@@ -214,6 +234,18 @@ async function collectPreservedTesterSectionRows(
     });
   }
   return preserved;
+}
+
+function collectSheetPointsByPageId(rows: string[][], monthLabel: string): Map<string, number> {
+  const indexed = new Map<string, number>();
+  for (const taskRow of collectTaskRows(rows, monthLabel)) {
+    const pageId = extractPageIdFromUrl((taskRow[COLUMN_INDEX.link] ?? "").trim());
+    if (!pageId) continue;
+    const numericPoint = parseFloat((taskRow[COLUMN_INDEX.point] ?? "").replace(/,/g, "").trim());
+    if (!Number.isFinite(numericPoint) || numericPoint <= 0) continue;
+    indexed.set(pageId, numericPoint);
+  }
+  return indexed;
 }
 
 function collectPageIdsOutsideTargetSection(rows: string[][], targetMonthLabel: string): Set<string> {
