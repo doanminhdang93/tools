@@ -268,6 +268,12 @@ export async function syncTab(args: SyncTabArgs): Promise<SyncTabResult> {
     }
   }
 
+  const lastRowNeeded = writeStartRow + allTaskRows.length;
+  const rowsAdded = await sheets.ensureRowCapacity(tabName, lastRowNeeded);
+  if (rowsAdded > 0) {
+    logger.info(`[${tabName}] expanded grid by ${rowsAdded} row(s) to fit row ${lastRowNeeded}`);
+  }
+
   await sheets.writeRange(tabName, writeStartRow, [headerRow, ...allTaskRows]);
 
   await formatSection({

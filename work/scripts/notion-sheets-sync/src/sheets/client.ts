@@ -18,6 +18,7 @@ export interface SheetsClient {
     count: number,
   ): Promise<void>;
   deleteRows(tabName: string, startRow: number, endRow: number): Promise<void>;
+  ensureRowCapacity(tabName: string, rowsNeeded: number): Promise<number>;
   applySectionStyle(tabName: string, plan: SectionStylePlan): Promise<void>;
   listTabNames(): Promise<string[]>;
   rawApi: sheets_v4.Sheets;
@@ -76,6 +77,14 @@ export function createSheetsClient(
         startRow,
         endRow,
       ),
+    ensureRowCapacity: (tabName, rowsNeeded) =>
+      ensureRowCapacity(
+        sheetsApi,
+        spreadsheetId,
+        tabSheetIdCache,
+        tabName,
+        rowsNeeded,
+      ),
     applySectionStyle: (tabName, plan) =>
       applySectionStyle(
         sheetsApi,
@@ -123,6 +132,51 @@ async function insertEmptyRows(
       ],
     },
   });
+}
+
+// Extra rows appended beyond the immediate need, so a tab that is filling up
+// does not trigger a grid expansion on every single run.
+const GRID_EXPANSION_HEADROOM = 10;
+
+export function rowsToAppendFor(
+  currentRowCount: number,
+  rowsNeeded: number,
+): number {
+  if (rowsNeeded <= currentRowCount) return 0;
+  return rowsNeeded - currentRowCount + GRID_EXPANSION_HEADROOM;
+}
+
+async function ensureRowCapacity(
+  sheetsApi: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabSheetIdCache: Map<string, number>,
+  tabName: string,
+  rowsNeeded: number,
+): Promise<number> {
+  const response = await sheetsApi.spreadsheets.get({ spreadsheetId });
+  const matchingSheet = response.data.sheets?.find(
+    (sheet) => sheet.properties?.title === tabName,
+  );
+  const sheetId = matchingSheet?.properties?.sheetId;
+  if (sheetId === undefined || sheetId === null) {
+    throw new Error(`Tab not found in spreadsheet: "${tabName}"`);
+  }
+  tabSheetIdCache.set(tabName, sheetId);
+
+  const currentRowCount =
+    matchingSheet?.properties?.gridProperties?.rowCount ?? 0;
+  const rowsToAppend = rowsToAppendFor(currentRowCount, rowsNeeded);
+  if (rowsToAppend === 0) return 0;
+
+  await sheetsApi.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        { appendDimension: { sheetId, dimension: "ROWS", length: rowsToAppend } },
+      ],
+    },
+  });
+  return rowsToAppend;
 }
 
 async function deleteRows(

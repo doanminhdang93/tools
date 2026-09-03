@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { columnLetterFor, isNonDefaultFill } from "./client.ts";
+import { columnLetterFor, isNonDefaultFill, rowsToAppendFor } from "./client.ts";
 
 describe("columnLetterFor", () => {
   it("maps 1..26 to A..Z", () => {
@@ -26,6 +26,18 @@ describe("columnLetterFor", () => {
   it("throws on zero or negative input", () => {
     expect(() => columnLetterFor(0)).toThrow(/>= 1/);
     expect(() => columnLetterFor(-5)).toThrow(/>= 1/);
+  });
+});
+
+describe("rowsToAppendFor", () => {
+  it("appends nothing when the grid already fits the needed rows", () => {
+    expect(rowsToAppendFor(159, 159)).toBe(0);
+    expect(rowsToAppendFor(1000, 200)).toBe(0);
+  });
+
+  it("covers the shortfall plus headroom when the grid is too small", () => {
+    expect(rowsToAppendFor(159, 166)).toBe(17);
+    expect(rowsToAppendFor(159, 160)).toBe(11);
   });
 });
 
